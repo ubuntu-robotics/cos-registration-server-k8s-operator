@@ -15,7 +15,7 @@ This project uses `tox` for managing test environments. There are some pre-confi
 that can be used for linting and formatting code when you're preparing contributions to the charm:
 
 ```shell
-tox run -e format        # update your code according to linting rules
+tox run -e fmt           # update your code according to linting rules
 tox run -e lint          # code style
 tox run -e static        # static type checking
 tox run -e unit          # unit tests
@@ -30,5 +30,3 @@ Build the charm in this git repository using:
 ```shell
 charmcraft pack
 ```
-
-<!-- You may want to include any contribution/style guidelines in this document>

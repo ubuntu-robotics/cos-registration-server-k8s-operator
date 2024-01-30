@@ -3,16 +3,21 @@
 """A kubernetes charm for registering devices."""
 
 import logging
+import string
+import secrets
 
 from ops.charm import (
+    ActionEvent,
     CharmBase,
     HookEvent,
     RelationJoinedEvent,
 )
 
+from ops.framework import StoredState
 from ops.main import main
 from ops.model import ActiveStatus, MaintenanceStatus, WaitingStatus
-from ops.pebble import Layer, ExecError
+from ops.pebble import Layer, ExecError, ChangeError
+
 
 from charms.traefik_route_k8s.v0.traefik_route import TraefikRouteRequirer
 from charms.catalogue_k8s.v0.catalogue import CatalogueConsumer, CatalogueItem
@@ -28,11 +33,14 @@ VALID_LOG_LEVELS = ["info", "debug", "warning", "error", "critical"]
 class CosRegistrationServerCharm(CharmBase):
     """Charm to run a COS registration server on Kubernetes."""
 
+    _stored = StoredState()
+
     def __init__(self, *args):
         super().__init__(*args)
         self.name = "cos-registration-server"
 
         self.container = self.unit.get_container(self.name)
+        self._stored.set_default(admin_password="")
         self.ingress = TraefikRouteRequirer(self, self.model.get_relation("ingress"), "ingress")  # type: ignore
         self.framework.observe(self.on["ingress"].relation_joined, self._configure_ingress)
         self.framework.observe(self.ingress.on.ready, self._on_ingress_ready)
@@ -41,6 +49,11 @@ class CosRegistrationServerCharm(CharmBase):
 
         self.framework.observe(
             self.on.cos_registration_server_pebble_ready, self._update_layer_and_restart
+        )
+
+        self.framework.observe(
+            self.on.get_admin_password_action,  # pyright: ignore
+            self._on_get_admin_password,
         )
 
         self.catalog = CatalogueConsumer(
@@ -62,6 +75,55 @@ class CosRegistrationServerCharm(CharmBase):
     def _on_ingress_ready(self, _) -> None:
         """Once Traefik tells us our external URL, make sure we reconfigure the charm."""
         self._update_layer_and_restart(None)
+
+    def _generate_password(self) -> str:
+        """Generates a random 12 character password."""
+        chars = string.ascii_letters + string.digits
+        return "".join(secrets.choice(chars) for _ in range(12))
+
+    def _generate_admin_password(self) -> None:
+        """Generate the admin password if it's not already in stored state, and store it there."""
+        generated_password = self._generate_password()
+        try:
+            self.container.exec(
+                ["/usr/bin/create_super_user.bash", "--noinput"],
+                environment={
+                    "DJANGO_SUPERUSER_PASSWORD": generated_password,
+                    "DJANGO_SUPERUSER_EMAIL": "admin@example.com",
+                    "DJANGO_SUPERUSER_USERNAME": "admin",
+                },
+            ).wait()
+            self._stored.admin_password = generated_password
+        except (ChangeError, ExecError) as e:
+            logger.error(f"Failed to create the super user: {e}")
+
+    def _get_admin_password(self) -> str:
+        """Returns the password for the admin user.
+
+        Assuming we can_connect, otherwise cannot produce output. Caller should guard.
+        """
+        if self._stored.admin_password:  # type: ignore[truthy-function]
+            logger.debug("Admin was already created, returning the stored password")
+        else:
+            logger.debug(
+                "COS registration server admin password is not in stored state, so generating a new one."
+            )
+            self._generate_admin_password()
+        return self._stored.admin_password  # type: ignore
+
+    def _on_get_admin_password(self, event: ActionEvent) -> None:
+        """Returns the django url and password for the admin user as an action response."""
+        if not self.container.can_connect():
+            event.fail("The container is not ready yet. Please try again in a few minutes")
+            return
+
+        event.set_results(
+            {
+                "url": self.external_url + "/admin/",
+                "user": "admin",
+                "password": self._get_admin_password(),
+            }
+        )
 
     def _configure_ingress(self, event: HookEvent) -> None:
         """Set up ingress if a relation is joined, config changed, or a new leader election."""
@@ -128,42 +190,15 @@ class CosRegistrationServerCharm(CharmBase):
         # The path prefix is the same as in ingress per app
         external_path = f"{self.model.name}-{self.model.app.name}"
 
-        middlewares = {
-            # f"juju-sidecar-script-name-{self.model.name}-{self.model.app.name}": {
-            #     "headers": {
-            #         "customRequestHeaders": {
-            #             "X-Script-Name": "/" + external_path,
-            #             "X-Custom-Request-Header": "/" + external_path
-            #         },
-            #         "customResponseHeaders": {
-            #             "X-Custom-Response-Header": "/" + external_path,
-            #             "X-Script-Name": "/" + external_path,
-            #         }
-            #     }
-            # },
-            f"juju-sidecar-trailing-slash-handler-{self.model.name}-{self.model.app.name}": {
-                "redirectRegex": {
-                    "regex": f"^(.*)\\/{external_path}$",
-                    "replacement": f"/{external_path}/",
-                    "permanent": False,
-                }
-            },
-            f"juju-sidecar-noprefix-{self.model.name}-{self.model.app.name}": {
-                "stripPrefix": {"forceSlash": False, "prefixes": [f"/{external_path}"]},
-            },
-        }
-
         routers = {
             "juju-{}-{}-router".format(self.model.name, self.model.app.name): {
                 "entryPoints": ["web"],
                 "rule": f"PathPrefix(`/{external_path}`)",
-                "middlewares": list(middlewares.keys()),
                 "service": "juju-{}-{}-service".format(self.model.name, self.app.name),
             },
             "juju-{}-{}-router-tls".format(self.model.name, self.model.app.name): {
                 "entryPoints": ["websecure"],
                 "rule": f"PathPrefix(`/{external_path}`)",
-                "middlewares": list(middlewares.keys()),
                 "service": "juju-{}-{}-service".format(self.model.name, self.app.name),
                 "tls": {
                     "domains": [
@@ -182,7 +217,7 @@ class CosRegistrationServerCharm(CharmBase):
             }
         }
 
-        return {"http": {"routers": routers, "services": services, "middlewares": middlewares}}
+        return {"http": {"routers": routers, "services": services}}
 
     @property
     def _pebble_layer(self):
@@ -201,8 +236,7 @@ class CosRegistrationServerCharm(CharmBase):
                         "startup": "enabled",
                         "environment": {
                             "ALLOWED_HOST_DJANGO": self.ingress.external_host,
-                            #"FORCE_SCRIPT_NAME_DJANGO": f"/{self.model.name}-{self.model.app.name}"
-                            #"CSRF_TRUSTED_ORIGINS_DJANGO": self.ingress.external_host,
+                            "SCRIPT_NAME": f"/{self.model.name}-{self.model.app.name}",
                         },
                     }
                 },
