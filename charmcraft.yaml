@@ -35,3 +35,7 @@ requires:
     limit: 1
   catalogue:
     interface: catalogue
+
+actions:
+  get-admin-password:
+    description: Get the admin password for the django admin view.

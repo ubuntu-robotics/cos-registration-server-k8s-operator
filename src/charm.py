@@ -33,6 +33,7 @@ VALID_LOG_LEVELS = ["info", "debug", "warning", "error", "critical"]
 class CosRegistrationServerCharm(CharmBase):
     """Charm to run a COS registration server on Kubernetes."""
 
+    _stored = StoredState()
 
     def __init__(self, *args):
         super().__init__(*args)
@@ -48,6 +49,11 @@ class CosRegistrationServerCharm(CharmBase):
 
         self.framework.observe(
             self.on.cos_registration_server_pebble_ready, self._update_layer_and_restart
+        )
+
+        self.framework.observe(
+            self.on.get_admin_password_action,  # pyright: ignore
+            self._on_get_admin_password,
         )
 
         self.catalog = CatalogueConsumer(
@@ -70,6 +76,54 @@ class CosRegistrationServerCharm(CharmBase):
         """Once Traefik tells us our external URL, make sure we reconfigure the charm."""
         self._update_layer_and_restart(None)
 
+    def _generate_password(self) -> str:
+        """Generates a random 12 character password."""
+        chars = string.ascii_letters + string.digits
+        return "".join(secrets.choice(chars) for _ in range(12))
+
+    def _generate_admin_password(self) -> None:
+        """Generate the admin password if it's not already in stored state, and store it there."""
+        generated_password = self._generate_password()
+        try:
+            self.container.exec(
+                ["/usr/bin/create_super_user.bash", "--noinput"],
+                environment={
+                    "DJANGO_SUPERUSER_PASSWORD": generated_password,
+                    "DJANGO_SUPERUSER_EMAIL": "admin@example.com",
+                    "DJANGO_SUPERUSER_USERNAME": "admin",
+                },
+            ).wait()
+            self._stored.admin_password = generated_password
+        except (ChangeError, ExecError) as e:
+            logger.error(f"Failed to create the super user: {e}")
+
+    def _get_admin_password(self) -> str:
+        """Returns the password for the admin user.
+
+        Assuming we can_connect, otherwise cannot produce output. Caller should guard.
+        """
+        if self._stored.admin_password:  # type: ignore[truthy-function]
+            logger.debug("Admin was already created, returning the stored password")
+        else:
+            logger.debug(
+                "COS registration server admin password is not in stored state, so generating a new one."
+            )
+            self._generate_admin_password()
+        return self._stored.admin_password  # type: ignore
+
+    def _on_get_admin_password(self, event: ActionEvent) -> None:
+        """Returns the django url and password for the admin user as an action response."""
+        if not self.container.can_connect():
+            event.fail("The container is not ready yet. Please try again in a few minutes")
+            return
+
+        event.set_results(
+            {
+                "url": self.external_url + "/admin/",
+                "user": "admin",
+                "password": self._get_admin_password(),
+            }
+        )
 
     def _configure_ingress(self, event: HookEvent) -> None:
         """Set up ingress if a relation is joined, config changed, or a new leader election."""
