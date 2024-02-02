@@ -1,6 +1,6 @@
 # COS registration server Operator (k8s)
 
-The COS registration server but as an operator
+The [COS registration server](https://github.com/ubuntu-robotics/cos-registration-server) but as an operator
 
 ## Basic Deployment
 
