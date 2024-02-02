@@ -25,7 +25,7 @@ To deploy the local charm follow these instructions:
 - Deploy the charm with the following command:
 
   ```
-  juju deploy ./cos-registration-server_ubuntu-22.04-amd64.charm --resource TBD
+  juju deploy ./cos-registration-server_ubuntu-22.04-amd64.charm --resource ghcr.io/ubuntu-robotics/cos-registration-server:dev
   ```
 
 - Test the installation by executing the following command:
