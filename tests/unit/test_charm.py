@@ -6,10 +6,15 @@ import ops.testing
 from charm import (
     CosRegistrationServerCharm,
     GrafanaDashboardProvider,
+    md5_update_from_file,
+    md5_dir,
 )
 
 import yaml
 import os
+import hashlib
+import tempfile
+from pathlib import Path
 
 ops.testing.SIMULATE_CAN_CONNECT = True
 
@@ -146,3 +151,25 @@ class TestCharm(unittest.TestCase):
 
         self.assertEqual(patch__reinitialize_dashboard_data.call_count, 1)
 
+
+class TestMD5(unittest.TestCase):
+
+    def create_file(self, name, content):
+        with open(self.directory_path / Path(name), "w") as f:
+            f.write(content)
+
+    def setUp(self):
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.directory_path = Path(self.temporary_directory.name)
+
+    def test_md5_update_file(self):
+        self.create_file("robot-1.json", '{"dashboard": True}')
+        hash = hashlib.md5()
+        result = md5_update_from_file(self.directory_path / Path("robot-1.json"), hash)
+        self.assertNotEqual(result, str())
+
+    def test_md5_dir(self):
+        self.create_file("robot-1.json", '{"dashboard": True}')
+        self.create_file("robot-2.json", '{"dashboard": False}')
+        result = md5_dir(self.directory_path)
+        self.assertNotEqual(result, str())
