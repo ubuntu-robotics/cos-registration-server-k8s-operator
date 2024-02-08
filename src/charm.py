@@ -5,8 +5,10 @@
 import logging
 import string
 import secrets
+import hashlib
 
 from os import path
+from pathlib import Path
 
 from ops.charm import (
     ActionEvent,
@@ -33,6 +35,26 @@ logger = logging.getLogger(__name__)
 VALID_LOG_LEVELS = ["info", "debug", "warning", "error", "critical"]
 
 
+def md5_update_from_file(filename, hash):
+    """Generate the md5 of a file."""
+    assert Path(filename).is_file()
+    with open(str(filename), "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash.update(chunk)
+    return hash
+
+
+def md5_dir(directory):
+    """Generate the md5 of a directory."""
+    hash = hashlib.md5()
+    assert Path(directory).is_dir()
+    for file_path in sorted(Path(directory).iterdir(), key=lambda p: str(p).lower()):
+        hash.update(file_path.name.encode())
+        if file_path.is_file():
+            hash = md5_update_from_file(file_path, hash)
+    return hash.hexdigest()
+
+
 class CosRegistrationServerCharm(CharmBase):
     """Charm to run a COS registration server on Kubernetes."""
 
@@ -52,7 +74,7 @@ class CosRegistrationServerCharm(CharmBase):
         )
 
         self.container = self.unit.get_container(self.name)
-        self._stored.set_default(admin_password="")
+        self._stored.set_default(admin_password="", dashboard_dirs_hash="")
         self.ingress = TraefikRouteRequirer(self, self.model.get_relation("ingress"), "ingress")  # type: ignore
         self.framework.observe(self.on["ingress"].relation_joined, self._configure_ingress)
         self.framework.observe(self.ingress.on.ready, self._on_ingress_ready)
@@ -163,8 +185,11 @@ class CosRegistrationServerCharm(CharmBase):
         if not self.container.can_connect():
             self.unit.status = MaintenanceStatus("Waiting for pod startup to complete")
             return
-        logger.info("calling the grafana provider")
-        self.grafana_dashboard_provider._reinitialize_dashboard_data(inject_dropdowns=False)
+        md5 = md5_dir(self._grafana_dashboards_path)
+        if md5 != self._stored.dashboard_dirs_hash:
+            logger.info("Grafana dashboard path hash changed, updating dashboards!")
+            self._stored.dashboard_dirs_hash = md5
+            self.grafana_dashboard_provider._reinitialize_dashboard_data(inject_dropdowns=False)
 
     def _update_layer_and_restart(self, event) -> None:
         """Define and start a workload using the Pebble API."""
