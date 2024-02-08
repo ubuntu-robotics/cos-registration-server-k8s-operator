@@ -3,8 +3,13 @@ from unittest.mock import patch
 
 import ops
 import ops.testing
-from charm import CosRegistrationServerCharm
+from charm import (
+    CosRegistrationServerCharm,
+    GrafanaDashboardProvider,
+)
+
 import yaml
+import os
 
 ops.testing.SIMULATE_CAN_CONNECT = True
 
@@ -128,3 +133,16 @@ class TestCharm(unittest.TestCase):
         self.assertEqual(
             self.harness.charm.external_url, "http://1.2.3.4/testmodel-cos-registration-server"
         )
+
+    @patch.object(GrafanaDashboardProvider, "_reinitialize_dashboard_data")
+    def test_update_status(self, patch__reinitialize_dashboard_data):
+        self.harness.set_can_connect(self.name, True)
+        json_file_path = os.path.join(self.harness.charm._grafana_dashboards_path, "robot-1.json")
+        os.mkdir(self.harness.charm._grafana_dashboards_path)
+        with open(json_file_path, "w") as f:
+            f.write('{"dashboard": True }')
+
+        self.harness.charm.on.update_status.emit()
+
+        self.assertEqual(patch__reinitialize_dashboard_data.call_count, 1)
+
