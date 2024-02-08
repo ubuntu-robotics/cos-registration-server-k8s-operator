@@ -23,15 +23,21 @@ class TestCharm(unittest.TestCase):
     def setUp(self):
         self.harness = ops.testing.Harness(CosRegistrationServerCharm)
         self.addCleanup(self.harness.cleanup)
+
         self.name = "cos-registration-server"
 
         self.harness.set_model_name("testmodel")
         self.harness.container_pebble_ready(self.name)
         self.harness.handle_exec(self.name, ["/usr/bin/install.bash"], result=0)
         self.harness.handle_exec(self.name, ["/usr/bin/configure.bash"], result=0)
-        self.harness.begin_with_initial_hooks()
+
+        self.harness.add_storage("database", attach=True)[0]
+
+        self.harness.set_leader(True)
+        self.harness.begin()
 
     def test_create_super_user_action(self):
+        self.harness.set_can_connect(self.name, True)
         self.harness.handle_exec(
             self.name, ["/usr/bin/create_super_user.bash", "--noinput"], result=0
         )
@@ -57,6 +63,7 @@ class TestCharm(unittest.TestCase):
                     "environment": {
                         "ALLOWED_HOST_DJANGO": EXTERNAL_HOST,
                         "SCRIPT_NAME": f"/{self.harness._backend.model_name}-{self.name}",
+                        "GRAFANA_DASHBOARD_PATH": "/server_data/grafana_dashboards",
                     },
                 }
             },
