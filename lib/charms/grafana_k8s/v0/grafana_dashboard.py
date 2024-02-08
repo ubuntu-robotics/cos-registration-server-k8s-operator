@@ -1119,7 +1119,6 @@ class GrafanaDashboardProvider(Object):
 
         # Ensure we do not leave outdated dashboards by removing from stored all
         # the encoded dashboards that start with "file/".
-        logger.info("Enter the function")
         logger.info(f"{self._dashboards_path=}")
         if self._dashboards_path:
             stored_dashboard_templates: Any = self._stored.dashboard_templates  # pyright: ignore
