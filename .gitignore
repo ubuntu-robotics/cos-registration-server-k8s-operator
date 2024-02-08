@@ -1,2 +1,3 @@
 .venv/
 *.charm
+*.pyc
