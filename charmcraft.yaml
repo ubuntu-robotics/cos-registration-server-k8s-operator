@@ -36,6 +36,10 @@ requires:
   catalogue:
     interface: catalogue
 
+provides:
+  grafana-dashboard:
+        interface: grafana_dashboard
+
 actions:
   get-admin-password:
     description: Get the admin password for the django admin view.

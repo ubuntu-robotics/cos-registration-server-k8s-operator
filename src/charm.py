@@ -5,6 +5,10 @@
 import logging
 import string
 import secrets
+import hashlib
+
+from os import path
+from pathlib import Path
 
 from ops.charm import (
     ActionEvent,
@@ -21,6 +25,7 @@ from ops.pebble import Layer, ExecError, ChangeError
 
 from charms.traefik_route_k8s.v0.traefik_route import TraefikRouteRequirer
 from charms.catalogue_k8s.v0.catalogue import CatalogueConsumer, CatalogueItem
+from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 import socket
 
 
@@ -28,6 +33,26 @@ import socket
 logger = logging.getLogger(__name__)
 
 VALID_LOG_LEVELS = ["info", "debug", "warning", "error", "critical"]
+
+
+def md5_update_from_file(filename, hash):
+    """Generate the md5 of a file."""
+    assert Path(filename).is_file()
+    with open(str(filename), "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash.update(chunk)
+    return hash
+
+
+def md5_dir(directory):
+    """Generate the md5 of a directory."""
+    hash = hashlib.md5()
+    assert Path(directory).is_dir()
+    for file_path in sorted(Path(directory).iterdir(), key=lambda p: str(p).lower()):
+        hash.update(file_path.name.encode())
+        if file_path.is_file():
+            hash = md5_update_from_file(file_path, hash)
+    return hash.hexdigest()
 
 
 class CosRegistrationServerCharm(CharmBase):
@@ -39,13 +64,23 @@ class CosRegistrationServerCharm(CharmBase):
         super().__init__(*args)
         self.name = "cos-registration-server"
 
+        if len(self.model.storages["database"]) == 0:
+            # Storage isn't available yet. Since storage becomes available early enough, no need
+            # to observe storage-attached and complicate things; simply abort until it is ready.
+            return
+        self._server_data_mount_point = self.model.storages["database"][0].location
+        self._grafana_dashboards_path = path.join(
+            self._server_data_mount_point, "grafana_dashboards"
+        )
+
         self.container = self.unit.get_container(self.name)
-        self._stored.set_default(admin_password="")
+        self._stored.set_default(admin_password="", dashboard_dirs_hash="")
         self.ingress = TraefikRouteRequirer(self, self.model.get_relation("ingress"), "ingress")  # type: ignore
         self.framework.observe(self.on["ingress"].relation_joined, self._configure_ingress)
         self.framework.observe(self.ingress.on.ready, self._on_ingress_ready)
         self.framework.observe(self.on.leader_elected, self._configure_ingress)
         self.framework.observe(self.on.config_changed, self._configure_ingress)
+        self.framework.observe(self.on.update_status, self._on_update_status)
 
         self.framework.observe(
             self.on.cos_registration_server_pebble_ready, self._update_layer_and_restart
@@ -70,6 +105,10 @@ class CosRegistrationServerCharm(CharmBase):
                 url=self.external_url + "/devices/",
                 description=("COS registration server to register devices."),
             ),
+        )
+
+        self.grafana_dashboard_provider = GrafanaDashboardProvider(
+            charm=self, dashboards_path=self._grafana_dashboards_path
         )
 
     def _on_ingress_ready(self, _) -> None:
@@ -141,6 +180,17 @@ class CosRegistrationServerCharm(CharmBase):
             self._update_layer_and_restart(None)
             self.ingress.submit_to_traefik(self._ingress_config)
 
+    def _on_update_status(self, _) -> None:
+        """Event processing hook that is common to all events to ensure idempotency."""
+        if not self.container.can_connect():
+            self.unit.status = MaintenanceStatus("Waiting for pod startup to complete")
+            return
+        md5 = md5_dir(self._grafana_dashboards_path)
+        if md5 != self._stored.dashboard_dirs_hash:
+            logger.info("Grafana dashboard path hash changed, updating dashboards!")
+            self._stored.dashboard_dirs_hash = md5
+            self.grafana_dashboard_provider._reinitialize_dashboard_data(inject_dropdowns=False)
+
     def _update_layer_and_restart(self, event) -> None:
         """Define and start a workload using the Pebble API."""
         self.unit.status = MaintenanceStatus("Assembling pod spec")
@@ -148,7 +198,8 @@ class CosRegistrationServerCharm(CharmBase):
             try:
                 if not self.container.exists("/server_data/secret_key"):
                     self.container.exec(["/usr/bin/install.bash"]).wait()
-                self.container.exec(["/usr/bin/configure.bash"]).wait()
+                environment = {"GRAFANA_DASHBOARD_PATH": "/server_data/grafana_dashboards"}
+                self.container.exec(["/usr/bin/configure.bash"], environment=environment).wait()
             except ExecError as e:
                 logger.error(f"Failed to setup the server: {e}")
 
@@ -237,6 +288,7 @@ class CosRegistrationServerCharm(CharmBase):
                         "environment": {
                             "ALLOWED_HOST_DJANGO": self.ingress.external_host,
                             "SCRIPT_NAME": f"/{self.model.name}-{self.model.app.name}",
+                            "GRAFANA_DASHBOARD_PATH": "/server_data/grafana_dashboards",
                         },
                     }
                 },

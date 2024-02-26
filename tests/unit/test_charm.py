@@ -3,8 +3,18 @@ from unittest.mock import patch
 
 import ops
 import ops.testing
-from charm import CosRegistrationServerCharm
+from charm import (
+    CosRegistrationServerCharm,
+    GrafanaDashboardProvider,
+    md5_update_from_file,
+    md5_dir,
+)
+
 import yaml
+import os
+import hashlib
+import tempfile
+from pathlib import Path
 
 ops.testing.SIMULATE_CAN_CONNECT = True
 
@@ -23,15 +33,21 @@ class TestCharm(unittest.TestCase):
     def setUp(self):
         self.harness = ops.testing.Harness(CosRegistrationServerCharm)
         self.addCleanup(self.harness.cleanup)
+
         self.name = "cos-registration-server"
 
         self.harness.set_model_name("testmodel")
         self.harness.container_pebble_ready(self.name)
         self.harness.handle_exec(self.name, ["/usr/bin/install.bash"], result=0)
         self.harness.handle_exec(self.name, ["/usr/bin/configure.bash"], result=0)
-        self.harness.begin_with_initial_hooks()
+
+        self.harness.add_storage("database", attach=True)[0]
+
+        self.harness.set_leader(True)
+        self.harness.begin()
 
     def test_create_super_user_action(self):
+        self.harness.set_can_connect(self.name, True)
         self.harness.handle_exec(
             self.name, ["/usr/bin/create_super_user.bash", "--noinput"], result=0
         )
@@ -57,6 +73,7 @@ class TestCharm(unittest.TestCase):
                     "environment": {
                         "ALLOWED_HOST_DJANGO": EXTERNAL_HOST,
                         "SCRIPT_NAME": f"/{self.harness._backend.model_name}-{self.name}",
+                        "GRAFANA_DASHBOARD_PATH": "/server_data/grafana_dashboards",
                     },
                 }
             },
@@ -121,3 +138,38 @@ class TestCharm(unittest.TestCase):
         self.assertEqual(
             self.harness.charm.external_url, "http://1.2.3.4/testmodel-cos-registration-server"
         )
+
+    @patch.object(GrafanaDashboardProvider, "_reinitialize_dashboard_data")
+    def test_update_status(self, patch__reinitialize_dashboard_data):
+        self.harness.set_can_connect(self.name, True)
+        json_file_path = os.path.join(self.harness.charm._grafana_dashboards_path, "robot-1.json")
+        os.mkdir(self.harness.charm._grafana_dashboards_path)
+        with open(json_file_path, "w") as f:
+            f.write('{"dashboard": True }')
+
+        self.harness.charm.on.update_status.emit()
+
+        self.assertEqual(patch__reinitialize_dashboard_data.call_count, 1)
+
+
+class TestMD5(unittest.TestCase):
+
+    def create_file(self, name, content):
+        with open(self.directory_path / Path(name), "w") as f:
+            f.write(content)
+
+    def setUp(self):
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.directory_path = Path(self.temporary_directory.name)
+
+    def test_md5_update_file(self):
+        self.create_file("robot-1.json", '{"dashboard": True}')
+        hash = hashlib.md5()
+        result = md5_update_from_file(self.directory_path / Path("robot-1.json"), hash)
+        self.assertNotEqual(result, str())
+
+    def test_md5_dir(self):
+        self.create_file("robot-1.json", '{"dashboard": True}')
+        self.create_file("robot-2.json", '{"dashboard": False}')
+        result = md5_dir(self.directory_path)
+        self.assertNotEqual(result, str())
