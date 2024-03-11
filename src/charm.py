@@ -26,6 +26,7 @@ from ops.pebble import Layer, ExecError, ChangeError
 from charms.traefik_route_k8s.v0.traefik_route import TraefikRouteRequirer
 from charms.catalogue_k8s.v0.catalogue import CatalogueConsumer, CatalogueItem
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
+from charms.devices_pub_keys_manager_k8s.v0.devices_pub_keys import DevicesKeysProvider
 import socket
 
 
@@ -73,8 +74,12 @@ class CosRegistrationServerCharm(CharmBase):
             self._server_data_mount_point, "grafana_dashboards"
         )
 
+        self._devices_keys_file = path.join(
+            self._server_data_mount_point, "devices_keys"
+        )
+
         self.container = self.unit.get_container(self.name)
-        self._stored.set_default(admin_password="", dashboard_dirs_hash="")
+        self._stored.set_default(admin_password="", dashboard_dirs_hash="", devices_pub_keys_hash="")
         self.ingress = TraefikRouteRequirer(self, self.model.get_relation("ingress"), "ingress")  # type: ignore
         self.framework.observe(self.on["ingress"].relation_joined, self._configure_ingress)
         self.framework.observe(self.ingress.on.ready, self._on_ingress_ready)
@@ -109,6 +114,10 @@ class CosRegistrationServerCharm(CharmBase):
 
         self.grafana_dashboard_provider = GrafanaDashboardProvider(
             charm=self, dashboards_path=self._grafana_dashboards_path
+        )
+
+        self.device_pub_keys_provider = DevicesKeysProvider(
+            charm=self, devices_keys_file=self._devices_keys_file
         )
 
     def _on_ingress_ready(self, _) -> None:
@@ -190,6 +199,12 @@ class CosRegistrationServerCharm(CharmBase):
             logger.info("Grafana dashboard path hash changed, updating dashboards!")
             self._stored.dashboard_dirs_hash = md5
             self.grafana_dashboard_provider._reinitialize_dashboard_data(inject_dropdowns=False)
+        hash = hashlib.md5()
+        md5_keys_file = md5_update_from_file(self._devices_keys_file, hash)
+        if md5_keys_file != self._stored.devices_pub_keys_hash:
+            logger.info("device keys files hash has changed, updating them!")
+            self._stored.devices_pub_keys_hash = md5_keys_file.hexdigest()
+            self.device_pub_keys_provider._update_all_devices_keys_from_dir()
 
     def _update_layer_and_restart(self, event) -> None:
         """Define and start a workload using the Pebble API."""

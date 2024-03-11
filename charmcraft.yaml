@@ -38,7 +38,9 @@ requires:
 
 provides:
   grafana-dashboard:
-        interface: grafana_dashboard
+    interface: grafana_dashboard
+  devices_keys:
+    interface: devices_keys
 
 actions:
   get-admin-password:
