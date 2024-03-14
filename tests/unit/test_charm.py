@@ -6,6 +6,7 @@ import ops.testing
 from charm import (
     CosRegistrationServerCharm,
     GrafanaDashboardProvider,
+    AuthDevicesKeysProvider,
     md5_update_from_file,
     md5_dir,
 )
@@ -140,16 +141,26 @@ class TestCharm(unittest.TestCase):
         )
 
     @patch.object(GrafanaDashboardProvider, "_reinitialize_dashboard_data")
-    def test_update_status(self, patch__reinitialize_dashboard_data):
+    @patch.object(AuthDevicesKeysProvider, "_update_all_auth_devices_keys_from_dir")
+    def test_update_status(
+        self, patch__reinitialize_dashboard_data, patch__update_all_auth_devices_keys_from_dir
+    ):
         self.harness.set_can_connect(self.name, True)
         json_file_path = os.path.join(self.harness.charm._grafana_dashboards_path, "robot-1.json")
         os.mkdir(self.harness.charm._grafana_dashboards_path)
         with open(json_file_path, "w") as f:
             f.write('{"dashboard": True }')
 
+        self.harness.charm._auth_devices_keys_file = os.path.join(
+            self.harness.charm._server_data_mount_point, "auth_devices_keys"
+        )
+        with open(self.harness.charm._auth_devices_keys_file, "w") as f:
+            f.write('{"robot-unique-id": "ssh-rsa public-key-ash"}')
+
         self.harness.charm.on.update_status.emit()
 
         self.assertEqual(patch__reinitialize_dashboard_data.call_count, 1)
+        self.assertEqual(patch__update_all_auth_devices_keys_from_dir.call_count, 1)
 
 
 class TestMD5(unittest.TestCase):
