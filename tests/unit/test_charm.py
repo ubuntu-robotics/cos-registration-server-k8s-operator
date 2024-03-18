@@ -9,6 +9,7 @@ from charm import (
     AuthDevicesKeysProvider,
     md5_update_from_file,
     md5_dir,
+    md5_dict,
 )
 
 import yaml
@@ -141,9 +142,9 @@ class TestCharm(unittest.TestCase):
         )
 
     @patch.object(GrafanaDashboardProvider, "_reinitialize_dashboard_data")
-    @patch.object(AuthDevicesKeysProvider, "_update_all_auth_devices_keys_from_dir")
+    @patch.object(AuthDevicesKeysProvider, "_update_all_auth_devices_keys_from_db")
     def test_update_status(
-        self, patch__reinitialize_dashboard_data, patch__update_all_auth_devices_keys_from_dir
+        self, patch__reinitialize_dashboard_data, patch__update_all_auth_devices_keys_from_db
     ):
         self.harness.set_can_connect(self.name, True)
         json_file_path = os.path.join(self.harness.charm._grafana_dashboards_path, "robot-1.json")
@@ -151,16 +152,54 @@ class TestCharm(unittest.TestCase):
         with open(json_file_path, "w") as f:
             f.write('{"dashboard": True }')
 
-        self.harness.charm._auth_devices_keys_file = os.path.join(
-            self.harness.charm._server_data_mount_point, "auth_devices_keys"
-        )
-        with open(self.harness.charm._auth_devices_keys_file, "w") as f:
-            f.write('{"robot-unique-id": "ssh-rsa public-key-ash"}')
-
         self.harness.charm.on.update_status.emit()
 
         self.assertEqual(patch__reinitialize_dashboard_data.call_count, 1)
-        self.assertEqual(patch__update_all_auth_devices_keys_from_dir.call_count, 1)
+        self.assertEqual(patch__update_all_auth_devices_keys_from_db.call_count, 1)
+
+    @patch("requests.get")
+    def test_get_pub_keys_from_db_success(self, mock_get):
+        mock_get.return_value.json.return_value = {"0": "ssh-rsa pubkey1", "1": "ssh-rsa pubkey2"}
+        result = self.harness.charm._get_auth_devices_keys_from_db()
+        self.assertEqual(result, {"0": "ssh-rsa pubkey1", "1": "ssh-rsa pubkey2"})
+        mock_get.assert_called_once_with(
+            f"{self.harness.charm.internal_url}/api/v1/devices/?attrib=public_rsa_key&attrib=uid"
+        )
+
+    @patch("requests.get")
+    def test_update_auth_devices_keys_changed(self, mock_get):
+        mock_get.return_value.json.return_value = {"0": "ssh-rsa pubkey1"}
+        self.harness.charm._stored.auth_devices_keys_hash = ""
+        self.harness.charm._update_auth_devices_keys()
+        mock_get.assert_called_with(
+            f"{self.harness.charm.internal_url}/api/v1/devices/?attrib=public_rsa_key&attrib=uid"
+        )
+        self.assertNotEqual(self.harness.charm._stored.auth_devices_keys_hash, "")
+
+        previous_hash = self.harness.charm._stored.auth_devices_keys_hash
+        mock_get.return_value.json.return_value = {"0": "ssh-rsa pubkey1", "1": "ssh-rsa pubkey2"}
+        self.harness.charm._update_auth_devices_keys()
+        mock_get.assert_called_with(
+            f"{self.harness.charm.internal_url}/api/v1/devices/?attrib=public_rsa_key&attrib=uid"
+        )
+        self.assertNotEqual(self.harness.charm._stored.auth_devices_keys_hash, previous_hash)
+
+    @patch("requests.get")
+    def test_update_auth_devices_keys_not_changed(self, mock_get):
+        mock_get.return_value.json.return_value = {"0": "ssh-rsa pubkey1"}
+        self.harness.charm._stored.auth_devices_keys_hash = ""
+        self.harness.charm._update_auth_devices_keys()
+        mock_get.assert_called_with(
+            f"{self.harness.charm.internal_url}/api/v1/devices/?attrib=public_rsa_key&attrib=uid"
+        )
+        self.assertNotEqual(self.harness.charm._stored.auth_devices_keys_hash, "")
+
+        previous_hash = self.harness.charm._stored.auth_devices_keys_hash
+        self.harness.charm._update_auth_devices_keys()
+        mock_get.assert_called_with(
+            f"{self.harness.charm.internal_url}/api/v1/devices/?attrib=public_rsa_key&attrib=uid"
+        )
+        self.assertEqual(self.harness.charm._stored.auth_devices_keys_hash, previous_hash)
 
 
 class TestMD5(unittest.TestCase):
@@ -183,4 +222,10 @@ class TestMD5(unittest.TestCase):
         self.create_file("robot-1.json", '{"dashboard": True}')
         self.create_file("robot-2.json", '{"dashboard": False}')
         result = md5_dir(self.directory_path)
+        self.assertNotEqual(result, str())
+
+    def test_md5_dict(self):
+        test_dict = {"key1": "value1", "key2": "value2"}
+
+        result = md5_dict(test_dict)
         self.assertNotEqual(result, str())
