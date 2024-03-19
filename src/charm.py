@@ -214,10 +214,10 @@ class CosRegistrationServerCharm(CharmBase):
 
     def _update_auth_devices_keys(self) -> None:
         auth_devices_keys_dict = self._get_auth_devices_keys_from_db()
-        md5_keys_dict_has = md5_dict(auth_devices_keys_dict)
-        if md5_keys_dict_has != self._stored.auth_devices_keys_hash:
-            logger.info("authorized device keys hash has changed, updating them!")
-            self._stored.auth_devices_keys_hash = md5_keys_dict_has
+        md5_keys_dict_hash = md5_dict(auth_devices_keys_dict)
+        if md5_keys_dict_hash != self._stored.auth_devices_keys_hash:
+            logger.info("Authorized device keys hash has changed, updating them!")
+            self._stored.auth_devices_keys_hash = md5_keys_dict_hash
             self.auth_devices_keys_provider._update_all_auth_devices_keys_from_db(
                 auth_devices_keys_dict
             )
