@@ -218,7 +218,7 @@ class CosRegistrationServerCharm(CharmBase):
         if md5_keys_dict_hash != self._stored.auth_devices_keys_hash:
             logger.info("Authorized device keys hash has changed, updating them!")
             self._stored.auth_devices_keys_hash = md5_keys_dict_hash
-            self.auth_devices_keys_provider._update_all_auth_devices_keys_from_db(
+            self.auth_devices_keys_provider.update_all_auth_devices_keys_from_db(
                 auth_devices_keys_dict
             )
 

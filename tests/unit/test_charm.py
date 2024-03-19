@@ -142,9 +142,9 @@ class TestCharm(unittest.TestCase):
         )
 
     @patch.object(GrafanaDashboardProvider, "_reinitialize_dashboard_data")
-    @patch.object(AuthDevicesKeysProvider, "_update_all_auth_devices_keys_from_db")
+    @patch.object(AuthDevicesKeysProvider, "update_all_auth_devices_keys_from_db")
     def test_update_status(
-        self, patch__reinitialize_dashboard_data, patch__update_all_auth_devices_keys_from_db
+        self, patch__reinitialize_dashboard_data, patch_update_all_auth_devices_keys_from_db
     ):
         self.harness.set_can_connect(self.name, True)
         json_file_path = os.path.join(self.harness.charm._grafana_dashboards_path, "robot-1.json")
@@ -155,7 +155,7 @@ class TestCharm(unittest.TestCase):
         self.harness.charm.on.update_status.emit()
 
         self.assertEqual(patch__reinitialize_dashboard_data.call_count, 1)
-        self.assertEqual(patch__update_all_auth_devices_keys_from_db.call_count, 1)
+        self.assertEqual(patch_update_all_auth_devices_keys_from_db.call_count, 1)
 
     @patch("requests.get")
     def test_get_pub_keys_from_db_success(self, mock_get):
