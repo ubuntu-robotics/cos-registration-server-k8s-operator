@@ -7,6 +7,7 @@ import string
 import secrets
 import hashlib
 import requests
+import json
 
 from os import path
 from pathlib import Path
@@ -29,7 +30,6 @@ from charms.catalogue_k8s.v0.catalogue import CatalogueConsumer, CatalogueItem
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.auth_devices_keys_k8s.v0.auth_devices_keys import AuthDevicesKeysProvider
 import socket
-import json
 
 # Log messages can be retrieved using juju debug-log
 logger = logging.getLogger(__name__)
@@ -85,7 +85,7 @@ class CosRegistrationServerCharm(CharmBase):
 
         self.container = self.unit.get_container(self.name)
         self._stored.set_default(
-            admin_password="", dashboard_dirs_hash="", auth_devices_keys_hash=""
+            admin_password="", dashboard_dict_hash="", auth_devices_keys_hash=""
         )
         self.ingress = TraefikRouteRequirer(self, self.model.get_relation("ingress"), "ingress")  # type: ignore
         self.framework.observe(self.on["ingress"].relation_joined, self._configure_ingress)
@@ -201,16 +201,32 @@ class CosRegistrationServerCharm(CharmBase):
         if not self.container.can_connect():
             self.unit.status = MaintenanceStatus("Waiting for pod startup to complete")
             return
-
         self._update_grafana_dashboards()
         self._update_auth_devices_keys()
 
+    def _get_grafana_dashboards_from_db(self):
+        database_url = self.external_url + "/api/v1/applications/grafana/dashboards"
+        try:
+            response = requests.get(database_url)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to fetch Grafana dashboards from '{database_url}': {e}")
+            return None
+
     def _update_grafana_dashboards(self) -> None:
-        md5 = md5_dir(self._grafana_dashboards_path)
-        if md5 != self._stored.dashboard_dirs_hash:
-            logger.info("Grafana dashboard path hash changed, updating dashboards!")
-            self._stored.dashboard_dirs_hash = md5
-            self.grafana_dashboard_provider._reinitialize_dashboard_data(inject_dropdowns=False)
+        if grafana_dashboards := self._get_grafana_dashboards_from_db():
+            md5 = md5_dict(grafana_dashboards)
+            if md5 != self._stored.dashboard_dict_hash:
+                logger.info("Grafana dashboards dict hash changed, updating dashboards!")
+                self._stored.dashboard_dict_hash = md5
+                self.grafana_dashboard_provider.remove_non_builtin_dashboards()
+                for dashboard in grafana_dashboards:
+                    # assign dashboard uid in the grafana dashboard format
+                    dashboard["dashboard"]["uid"] = dashboard["uid"]
+                    self.grafana_dashboard_provider.add_dashboard(
+                        json.dumps(dashboard["dashboard"]), inject_dropdowns=False
+                    )
 
     def _update_auth_devices_keys(self) -> None:
         auth_devices_keys_dict = self._get_auth_devices_keys_from_db()
