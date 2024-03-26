@@ -6,6 +6,7 @@ import logging
 import string
 import secrets
 import hashlib
+import requests
 
 from os import path
 from pathlib import Path
@@ -26,8 +27,9 @@ from ops.pebble import Layer, ExecError, ChangeError
 from charms.traefik_route_k8s.v0.traefik_route import TraefikRouteRequirer
 from charms.catalogue_k8s.v0.catalogue import CatalogueConsumer, CatalogueItem
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
+from charms.auth_devices_keys_k8s.v0.auth_devices_keys import AuthDevicesKeysProvider
 import socket
-
+import json
 
 # Log messages can be retrieved using juju debug-log
 logger = logging.getLogger(__name__)
@@ -55,6 +57,14 @@ def md5_dir(directory):
     return hash.hexdigest()
 
 
+def md5_dict(dict):
+    """Generate the hash of a dictionary."""
+    json_str = json.dumps(dict, sort_keys=True)
+    hash_object = hashlib.md5(json_str.encode())
+    hash_value = hash_object.hexdigest()
+    return hash_value
+
+
 class CosRegistrationServerCharm(CharmBase):
     """Charm to run a COS registration server on Kubernetes."""
 
@@ -74,7 +84,9 @@ class CosRegistrationServerCharm(CharmBase):
         )
 
         self.container = self.unit.get_container(self.name)
-        self._stored.set_default(admin_password="", dashboard_dirs_hash="")
+        self._stored.set_default(
+            admin_password="", dashboard_dirs_hash="", auth_devices_keys_hash=""
+        )
         self.ingress = TraefikRouteRequirer(self, self.model.get_relation("ingress"), "ingress")  # type: ignore
         self.framework.observe(self.on["ingress"].relation_joined, self._configure_ingress)
         self.framework.observe(self.ingress.on.ready, self._on_ingress_ready)
@@ -109,6 +121,10 @@ class CosRegistrationServerCharm(CharmBase):
 
         self.grafana_dashboard_provider = GrafanaDashboardProvider(
             charm=self, dashboards_path=self._grafana_dashboards_path
+        )
+
+        self.auth_devices_keys_provider = AuthDevicesKeysProvider(
+            charm=self, relation_name="auth-devices-keys"
         )
 
     def _on_ingress_ready(self, _) -> None:
@@ -185,11 +201,26 @@ class CosRegistrationServerCharm(CharmBase):
         if not self.container.can_connect():
             self.unit.status = MaintenanceStatus("Waiting for pod startup to complete")
             return
+
+        self._update_grafana_dashboards()
+        self._update_auth_devices_keys()
+
+    def _update_grafana_dashboards(self) -> None:
         md5 = md5_dir(self._grafana_dashboards_path)
         if md5 != self._stored.dashboard_dirs_hash:
             logger.info("Grafana dashboard path hash changed, updating dashboards!")
             self._stored.dashboard_dirs_hash = md5
             self.grafana_dashboard_provider._reinitialize_dashboard_data(inject_dropdowns=False)
+
+    def _update_auth_devices_keys(self) -> None:
+        auth_devices_keys_dict = self._get_auth_devices_keys_from_db()
+        md5_keys_dict_hash = md5_dict(auth_devices_keys_dict)
+        if md5_keys_dict_hash != self._stored.auth_devices_keys_hash:
+            logger.info("Authorized device keys hash has changed, updating them!")
+            self._stored.auth_devices_keys_hash = md5_keys_dict_hash
+            self.auth_devices_keys_provider.update_all_auth_devices_keys_from_db(
+                auth_devices_keys_dict
+            )
 
     def _update_layer_and_restart(self, event) -> None:
         """Define and start a workload using the Pebble API."""
@@ -217,6 +248,16 @@ class CosRegistrationServerCharm(CharmBase):
             self.unit.status = ActiveStatus()
         else:
             self.unit.status = WaitingStatus("Waiting for Pebble in workload container")
+
+    def _get_auth_devices_keys_from_db(self):
+        database_url = self.internal_url + "/api/v1/devices/?attrib=public_rsa_key&attrib=uid"
+        try:
+            response = requests.get(database_url)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to fetch auth devices keys from '{database_url}': {e}")
+            return None
 
     @property
     def _scheme(self) -> str:
