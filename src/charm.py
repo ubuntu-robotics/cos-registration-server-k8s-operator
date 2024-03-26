@@ -36,6 +36,8 @@ logger = logging.getLogger(__name__)
 
 VALID_LOG_LEVELS = ["info", "debug", "warning", "error", "critical"]
 
+COS_REGISTRATION_SERVER_API_URL_BASE = "/api/v1/"
+
 
 def md5_update_from_file(filename, hash):
     """Generate the md5 of a file."""
@@ -205,7 +207,11 @@ class CosRegistrationServerCharm(CharmBase):
         self._update_auth_devices_keys()
 
     def _get_grafana_dashboards_from_db(self):
-        database_url = self.external_url + "/api/v1/applications/grafana/dashboards"
+        database_url = (
+            self.external_url
+            + COS_REGISTRATION_SERVER_API_URL_BASE
+            + "applications/grafana/dashboards"
+        )
         try:
             response = requests.get(database_url)
             response.raise_for_status()
@@ -266,7 +272,11 @@ class CosRegistrationServerCharm(CharmBase):
             self.unit.status = WaitingStatus("Waiting for Pebble in workload container")
 
     def _get_auth_devices_keys_from_db(self):
-        database_url = self.internal_url + "/api/v1/devices/?fields=uid,public_ssh_key"
+        database_url = (
+            self.internal_url
+            + COS_REGISTRATION_SERVER_API_URL_BASE
+            + "devices/?fields=uid,public_ssh_key"
+        )
         try:
             response = requests.get(database_url)
             response.raise_for_status()
