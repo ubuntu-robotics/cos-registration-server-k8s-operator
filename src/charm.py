@@ -229,14 +229,14 @@ class CosRegistrationServerCharm(CharmBase):
                     )
 
     def _update_auth_devices_keys(self) -> None:
-        auth_devices_keys_dict = self._get_auth_devices_keys_from_db()
-        md5_keys_dict_hash = md5_dict(auth_devices_keys_dict)
-        if md5_keys_dict_hash != self._stored.auth_devices_keys_hash:
-            logger.info("Authorized device keys hash has changed, updating them!")
-            self._stored.auth_devices_keys_hash = md5_keys_dict_hash
-            self.auth_devices_keys_provider.update_all_auth_devices_keys_from_db(
-                auth_devices_keys_dict
-            )
+        if auth_devices_keys_dict := self._get_auth_devices_keys_from_db():
+            md5_keys_dict_hash = md5_dict(auth_devices_keys_dict)
+            if md5_keys_dict_hash != self._stored.auth_devices_keys_hash:
+                logger.info("Authorized device keys hash has changed, updating them!")
+                self._stored.auth_devices_keys_hash = md5_keys_dict_hash
+                self.auth_devices_keys_provider.update_all_auth_devices_keys_from_db(
+                    auth_devices_keys_dict
+                )
 
     def _update_layer_and_restart(self, event) -> None:
         """Define and start a workload using the Pebble API."""
@@ -266,7 +266,7 @@ class CosRegistrationServerCharm(CharmBase):
             self.unit.status = WaitingStatus("Waiting for Pebble in workload container")
 
     def _get_auth_devices_keys_from_db(self):
-        database_url = self.internal_url + "/api/v1/devices/?attrib=public_rsa_key&attrib=uid"
+        database_url = self.internal_url + "/api/v1/devices/?fields=uid,public_ssh_key"
         try:
             response = requests.get(database_url)
             response.raise_for_status()

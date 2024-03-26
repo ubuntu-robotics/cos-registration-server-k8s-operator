@@ -163,7 +163,7 @@ class TestCharm(unittest.TestCase):
         result = self.harness.charm._get_auth_devices_keys_from_db()
         self.assertEqual(result, {"0": "ssh-rsa pubkey1", "1": "ssh-rsa pubkey2"})
         mock_get.assert_called_once_with(
-            f"{self.harness.charm.internal_url}/api/v1/devices/?attrib=public_rsa_key&attrib=uid"
+            f"{self.harness.charm.internal_url}/api/v1/devices/?fields=uid,public_ssh_key"
         )
 
     @patch("requests.get")
@@ -172,7 +172,7 @@ class TestCharm(unittest.TestCase):
         self.harness.charm._stored.auth_devices_keys_hash = ""
         self.harness.charm._update_auth_devices_keys()
         mock_get.assert_called_with(
-            f"{self.harness.charm.internal_url}/api/v1/devices/?attrib=public_rsa_key&attrib=uid"
+            f"{self.harness.charm.internal_url}/api/v1/devices/?fields=uid,public_ssh_key"
         )
         self.assertNotEqual(self.harness.charm._stored.auth_devices_keys_hash, "")
 
@@ -180,7 +180,7 @@ class TestCharm(unittest.TestCase):
         mock_get.return_value.json.return_value = {"0": "ssh-rsa pubkey1", "1": "ssh-rsa pubkey2"}
         self.harness.charm._update_auth_devices_keys()
         mock_get.assert_called_with(
-            f"{self.harness.charm.internal_url}/api/v1/devices/?attrib=public_rsa_key&attrib=uid"
+            f"{self.harness.charm.internal_url}/api/v1/devices/?fields=uid,public_ssh_key"
         )
         self.assertNotEqual(self.harness.charm._stored.auth_devices_keys_hash, previous_hash)
 
@@ -190,14 +190,14 @@ class TestCharm(unittest.TestCase):
         self.harness.charm._stored.auth_devices_keys_hash = ""
         self.harness.charm._update_auth_devices_keys()
         mock_get.assert_called_with(
-            f"{self.harness.charm.internal_url}/api/v1/devices/?attrib=public_rsa_key&attrib=uid"
+            f"{self.harness.charm.internal_url}/api/v1/devices/?fields=uid,public_ssh_key"
         )
         self.assertNotEqual(self.harness.charm._stored.auth_devices_keys_hash, "")
 
         previous_hash = self.harness.charm._stored.auth_devices_keys_hash
         self.harness.charm._update_auth_devices_keys()
         mock_get.assert_called_with(
-            f"{self.harness.charm.internal_url}/api/v1/devices/?attrib=public_rsa_key&attrib=uid"
+            f"{self.harness.charm.internal_url}/api/v1/devices/?fields=uid,public_ssh_key"
         )
         self.assertEqual(self.harness.charm._stored.auth_devices_keys_hash, previous_hash)
 
