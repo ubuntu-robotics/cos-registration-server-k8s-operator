@@ -1,19 +1,16 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 import ops
 import ops.testing
 from charm import (
     CosRegistrationServerCharm,
-    GrafanaDashboardProvider,
-    AuthDevicesKeysProvider,
     md5_update_from_file,
     md5_dir,
     md5_dict,
 )
 
 import yaml
-import os
 import hashlib
 import tempfile
 from pathlib import Path
@@ -141,21 +138,18 @@ class TestCharm(unittest.TestCase):
             self.harness.charm.external_url, "http://1.2.3.4/testmodel-cos-registration-server"
         )
 
-    @patch.object(GrafanaDashboardProvider, "_reinitialize_dashboard_data")
-    @patch.object(AuthDevicesKeysProvider, "update_all_auth_devices_keys_from_db")
     def test_update_status(
-        self, patch__reinitialize_dashboard_data, patch_update_all_auth_devices_keys_from_db
+        self,
     ):
         self.harness.set_can_connect(self.name, True)
-        json_file_path = os.path.join(self.harness.charm._grafana_dashboards_path, "robot-1.json")
-        os.mkdir(self.harness.charm._grafana_dashboards_path)
-        with open(json_file_path, "w") as f:
-            f.write('{"dashboard": True }')
+
+        self.harness.charm._update_grafana_dashboards = Mock()
+        self.harness.charm._update_auth_devices_keys = Mock()
 
         self.harness.charm.on.update_status.emit()
 
-        self.assertEqual(patch__reinitialize_dashboard_data.call_count, 1)
-        self.assertEqual(patch_update_all_auth_devices_keys_from_db.call_count, 1)
+        self.assertEqual(self.harness.charm._update_grafana_dashboards.call_count, 1)
+        self.assertEqual(self.harness.charm._update_auth_devices_keys.call_count, 1)
 
     @patch("requests.get")
     def test_get_pub_keys_from_db_success(self, mock_get):
@@ -163,7 +157,7 @@ class TestCharm(unittest.TestCase):
         result = self.harness.charm._get_auth_devices_keys_from_db()
         self.assertEqual(result, {"0": "ssh-rsa pubkey1", "1": "ssh-rsa pubkey2"})
         mock_get.assert_called_once_with(
-            f"{self.harness.charm.internal_url}/api/v1/devices/?attrib=public_rsa_key&attrib=uid"
+            f"{self.harness.charm.internal_url}/api/v1/devices/?fields=uid,public_ssh_key"
         )
 
     @patch("requests.get")
@@ -172,7 +166,7 @@ class TestCharm(unittest.TestCase):
         self.harness.charm._stored.auth_devices_keys_hash = ""
         self.harness.charm._update_auth_devices_keys()
         mock_get.assert_called_with(
-            f"{self.harness.charm.internal_url}/api/v1/devices/?attrib=public_rsa_key&attrib=uid"
+            f"{self.harness.charm.internal_url}/api/v1/devices/?fields=uid,public_ssh_key"
         )
         self.assertNotEqual(self.harness.charm._stored.auth_devices_keys_hash, "")
 
@@ -180,7 +174,7 @@ class TestCharm(unittest.TestCase):
         mock_get.return_value.json.return_value = {"0": "ssh-rsa pubkey1", "1": "ssh-rsa pubkey2"}
         self.harness.charm._update_auth_devices_keys()
         mock_get.assert_called_with(
-            f"{self.harness.charm.internal_url}/api/v1/devices/?attrib=public_rsa_key&attrib=uid"
+            f"{self.harness.charm.internal_url}/api/v1/devices/?fields=uid,public_ssh_key"
         )
         self.assertNotEqual(self.harness.charm._stored.auth_devices_keys_hash, previous_hash)
 
@@ -190,16 +184,75 @@ class TestCharm(unittest.TestCase):
         self.harness.charm._stored.auth_devices_keys_hash = ""
         self.harness.charm._update_auth_devices_keys()
         mock_get.assert_called_with(
-            f"{self.harness.charm.internal_url}/api/v1/devices/?attrib=public_rsa_key&attrib=uid"
+            f"{self.harness.charm.internal_url}/api/v1/devices/?fields=uid,public_ssh_key"
         )
         self.assertNotEqual(self.harness.charm._stored.auth_devices_keys_hash, "")
 
         previous_hash = self.harness.charm._stored.auth_devices_keys_hash
         self.harness.charm._update_auth_devices_keys()
         mock_get.assert_called_with(
-            f"{self.harness.charm.internal_url}/api/v1/devices/?attrib=public_rsa_key&attrib=uid"
+            f"{self.harness.charm.internal_url}/api/v1/devices/?fields=uid,public_ssh_key"
         )
         self.assertEqual(self.harness.charm._stored.auth_devices_keys_hash, previous_hash)
+
+    @patch("requests.get")
+    def test_get_grafana_dashboards_from_db_success(self, mock_get):
+        mock_get.return_value.json.return_value = [
+            {"uid": "my_dashboard", "dashboard": {"annotations": True, "dashboard": True}}
+        ]
+        result = self.harness.charm._get_grafana_dashboards_from_db()
+        self.assertEqual(
+            result,
+            [{"uid": "my_dashboard", "dashboard": {"annotations": True, "dashboard": True}}],
+        )
+        mock_get.assert_called_once_with(
+            f"{self.harness.charm.internal_url}/api/v1/applications/grafana/dashboards"
+        )
+
+    @patch("requests.get")
+    def test_update_grafana_dashboards_changed(self, mock_get):
+        mock_get.return_value.json.return_value = [
+            {"uid": "my_dashboard", "dashboard": {"annotations": True, "dashboard": True}}
+        ]
+        self.harness.charm._stored.dashboard_dict_hash = ""
+        self.harness.charm._update_grafana_dashboards()
+        mock_get.assert_called_with(
+            f"{self.harness.charm.internal_url}/api/v1/applications/grafana/dashboards"
+        )
+        self.assertNotEqual(self.harness.charm._stored.dashboard_dict_hash, "")
+
+        previous_hash = self.harness.charm._stored.auth_devices_keys_hash
+        mock_get.return_value.json.return_value = [
+            {"uid": "my_dashboard2", "dashboard": {"annotations": True, "dashboard": True}}
+        ]
+        self.harness.charm._update_grafana_dashboards()
+        mock_get.assert_called_with(
+            f"{self.harness.charm.internal_url}/api/v1/applications/grafana/dashboards"
+        )
+        self.assertNotEqual(self.harness.charm._stored.dashboard_dict_hash, previous_hash)
+
+    @patch("requests.get")
+    def test_update_grafana_dashboards_not_changed(self, mock_get):
+        mock_get.return_value.json.return_value = [
+            {"uid": "my_dashboard", "dashboard": {"annotations": True, "dashboard": True}}
+        ]
+        self.harness.charm._stored.dashboard_dict_hash = ""
+        self.harness.charm._update_grafana_dashboards()
+        mock_get.assert_called_with(
+            f"{self.harness.charm.internal_url}/api/v1/applications/grafana/dashboards"
+        )
+        self.assertNotEqual(self.harness.charm._stored.dashboard_dict_hash, "")
+        print(self.harness.charm._stored.dashboard_dict_hash)
+        previous_hash = self.harness.charm._stored.dashboard_dict_hash
+        mock_get.return_value.json.return_value = [
+            {"uid": "my_dashboard", "dashboard": {"annotations": True, "dashboard": True}}
+        ]
+        self.harness.charm._update_grafana_dashboards()
+        print(self.harness.charm._stored.dashboard_dict_hash)
+        mock_get.assert_called_with(
+            f"{self.harness.charm.internal_url}/api/v1/applications/grafana/dashboards"
+        )
+        self.assertEqual(self.harness.charm._stored.dashboard_dict_hash, previous_hash)
 
 
 class TestMD5(unittest.TestCase):
