@@ -1,4 +1,4 @@
-name: cos-registration-server
+name: cos-registration-server-k8s
 summary: The COS registration server as a k8s charm
 description: |
   The COS registration server as a k8s charm
