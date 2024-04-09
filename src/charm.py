@@ -353,9 +353,8 @@ class CosRegistrationServerCharm(CharmBase):
                         "command": command,
                         "startup": "enabled",
                         "environment": {
-                            "ALLOWED_HOST_DJANGO": self.ingress.external_host,
+                            "ALLOWED_HOST_DJANGO": f"{self.ingress.external_host},{socket.getfqdn()}",
                             "SCRIPT_NAME": f"/{self.model.name}-{self.model.app.name}",
-                            "GRAFANA_DASHBOARD_PATH": "/server_data/grafana_dashboards",
                         },
                     }
                 },
