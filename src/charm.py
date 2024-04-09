@@ -273,7 +273,7 @@ class CosRegistrationServerCharm(CharmBase):
 
     def _get_auth_devices_keys_from_db(self):
         database_url = (
-            self.internal_url
+            self.external_url
             + COS_REGISTRATION_SERVER_API_URL_BASE
             + "devices/?fields=uid,public_ssh_key"
         )
