@@ -72,8 +72,8 @@ class TestCharm(unittest.TestCase):
                     "startup": "enabled",
                     "environment": {
                         "ALLOWED_HOST_DJANGO": EXTERNAL_HOST,
-                        "SCRIPT_NAME": f"/{self.harness._backend.model_name}-{self.name}",
-                        "GRAFANA_DASHBOARD_PATH": "/server_data/grafana_dashboards",
+                        "SCRIPT_NAME": f"/{self.harness._backend.model_name}-{self.harness._backend.app_name}",
+                        "COS_MODEL_NAME": f"{self.harness._backend.model_name}",
                     },
                 }
             },
@@ -103,20 +103,20 @@ class TestCharm(unittest.TestCase):
         expected_rel_data = {
             "http": {
                 "routers": {
-                    "juju-testmodel-cos-registration-server-router": {
+                    "juju-testmodel-cos-registration-server-k8s-router": {
                         "entryPoints": ["web"],
-                        "rule": "PathPrefix(`/testmodel-cos-registration-server`)",
-                        "service": "juju-testmodel-cos-registration-server-service",
+                        "rule": "PathPrefix(`/testmodel-cos-registration-server-k8s`)",
+                        "service": "juju-testmodel-cos-registration-server-k8s-service",
                     },
-                    "juju-testmodel-cos-registration-server-router-tls": {
+                    "juju-testmodel-cos-registration-server-k8s-router-tls": {
                         "entryPoints": ["websecure"],
-                        "rule": "PathPrefix(`/testmodel-cos-registration-server`)",
-                        "service": "juju-testmodel-cos-registration-server-service",
+                        "rule": "PathPrefix(`/testmodel-cos-registration-server-k8s`)",
+                        "service": "juju-testmodel-cos-registration-server-k8s-service",
                         "tls": {"domains": [{"main": "1.2.3.4", "sans": ["*.1.2.3.4"]}]},
                     },
                 },
                 "services": {
-                    "juju-testmodel-cos-registration-server-service": {
+                    "juju-testmodel-cos-registration-server-k8s-service": {
                         "loadBalancer": {
                             "servers": [
                                 {
@@ -136,7 +136,7 @@ class TestCharm(unittest.TestCase):
         self.assertEqual(yaml.safe_load(rel_data["config"]), expected_rel_data)
 
         self.assertEqual(
-            self.harness.charm.external_url, "http://1.2.3.4/testmodel-cos-registration-server"
+            self.harness.charm.external_url, "http://1.2.3.4/testmodel-cos-registration-server-k8s"
         )
 
     def test_update_status(
