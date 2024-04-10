@@ -67,6 +67,13 @@ def md5_dict(dict):
     return hash_value
 
 
+def md5_list(lst):
+    """Generate the hash of a list."""
+    hash_object = hashlib.md5(repr(lst).encode())
+    hash_value = hash_object.hexdigest()
+    return hash_value
+
+
 class CosRegistrationServerCharm(CharmBase):
     """Charm to run a COS registration server on Kubernetes."""
 
@@ -235,13 +242,13 @@ class CosRegistrationServerCharm(CharmBase):
                     )
 
     def _update_auth_devices_keys(self) -> None:
-        if auth_devices_keys_dict := self._get_auth_devices_keys_from_db():
-            md5_keys_dict_hash = md5_dict(auth_devices_keys_dict)
-            if md5_keys_dict_hash != self._stored.auth_devices_keys_hash:
+        if auth_devices_keys := self._get_auth_devices_keys_from_db():
+            md5_keys_list_hash = md5_list(auth_devices_keys)
+            if md5_keys_list_hash != self._stored.auth_devices_keys_hash:
                 logger.info("Authorized device keys hash has changed, updating them!")
-                self._stored.auth_devices_keys_hash = md5_keys_dict_hash
+                self._stored.auth_devices_keys_hash = md5_keys_list_hash
                 self.auth_devices_keys_provider.update_all_auth_devices_keys_from_db(
-                    auth_devices_keys_dict
+                    auth_devices_keys
                 )
 
     def _update_layer_and_restart(self, event) -> None:
