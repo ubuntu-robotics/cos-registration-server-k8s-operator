@@ -166,7 +166,7 @@ class AuthDevicesKeysConsumer(Object):
         self._charm = charm
         self._relation_name = relation_name
 
-        self._stored.set_default(auth_devices_keys={})  # type: ignore
+        self._stored.set_default(auth_devices_keys=[])  # type: ignore
         self.framework.observe(
             self._charm.on[relation_name].relation_changed,
             self._on_relation_changed,
