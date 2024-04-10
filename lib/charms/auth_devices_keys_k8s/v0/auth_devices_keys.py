@@ -166,7 +166,7 @@ class AuthDevicesKeysConsumer(Object):
         self._charm = charm
         self._relation_name = relation_name
 
-        self._stored.set_default(auth_devices_keys={})  # type: ignore
+        self._stored.set_default(auth_devices_keys=[])  # type: ignore
         self.framework.observe(
             self._charm.on[relation_name].relation_changed,
             self._on_relation_changed,
@@ -198,7 +198,7 @@ class AuthDevicesKeysConsumer(Object):
             if not databag:
                 return False
 
-        coerced_data = _type_convert_stored(self._stored.auth_devices_keys) if self._stored.auth_devices_keys else {}
+        coerced_data = _type_convert_stored(self._stored.auth_devices_keys) if self._stored.auth_devices_keys else []
         if coerced_data != databag:
             self._stored.auth_devices_keys = databag
             self.on.auth_devices_keys_changed.emit()
@@ -246,7 +246,7 @@ class AuthDevicesKeysProvider(Object):
         self._charm = charm
         self._relation_name = relation_name
 
-        self._stored.set_default(auth_devices_keys={})  # type: ignore
+        self._stored.set_default(auth_devices_keys=[])  # type: ignore
 
         self.framework.observe(self._charm.on.leader_elected, self._on_handle_relation)
         self.framework.observe(self._charm.on.upgrade_charm, self._on_handle_relation)
@@ -274,7 +274,8 @@ class AuthDevicesKeysProvider(Object):
         self.update_all_auth_devices_keys_from_db(auth_devices_keys_dict)
 
     def update_all_auth_devices_keys_from_db(
-        self, auth_devices_keys, _: Optional[HookEvent] = None) -> None:
+        self, auth_devices_keys, _: Optional[HookEvent] = None
+    ) -> None:
         """Scans the available public keys and updates relations with changes."""
         # Update of storage must be done irrespective of leadership, so
         # that the stored state is there when this unit becomes leader.
@@ -282,8 +283,7 @@ class AuthDevicesKeysProvider(Object):
         if auth_devices_keys:
             stored_auth_devices_keys: Any = self._stored.auth_devices_keys  # pyright: ignore
 
-            for pub_rsa_key in list(stored_auth_devices_keys.keys()):
-                del stored_auth_devices_keys[pub_rsa_key]
+            stored_auth_devices_keys.clear()
 
             self._stored.auth_devices_keys = auth_devices_keys
 
@@ -294,13 +294,11 @@ class AuthDevicesKeysProvider(Object):
     def _update_auth_devices_keys_on_relation(self, relation: Relation) -> None:
         """Update the available devices public keys in the relation data bucket."""
 
-        logger.info(self._stored.auth_devices_keys)
-        stored_data = {
-             "ssh_pub_keys": _type_convert_stored(self._stored.auth_devices_keys)
-        }
-        logger.info(type(stored_data))
-        relation.data[self._charm.app]["auth_devices_keys"] = json.dumps(stored_data)
+        logger.debug(self._stored.auth_devices_keys)
+        stored_data = _type_convert_stored(self._stored.auth_devices_keys)
 
+        logger.debug(type(stored_data))
+        relation.data[self._charm.app]["auth_devices_keys"] = json.dump(stored_data)
 
     def _on_relation_changed(self, event: RelationChangedEvent) -> None:
         """Handle relation changes in related providers.

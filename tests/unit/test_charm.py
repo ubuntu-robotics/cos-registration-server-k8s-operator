@@ -8,6 +8,7 @@ from charm import (
     md5_update_from_file,
     md5_dir,
     md5_dict,
+    md5_list,
 )
 
 import yaml
@@ -153,16 +154,27 @@ class TestCharm(unittest.TestCase):
 
     @patch("requests.get")
     def test_get_pub_keys_from_db_success(self, mock_get):
-        mock_get.return_value.json.return_value = {"0": "ssh-rsa pubkey1", "1": "ssh-rsa pubkey2"}
+        mock_get.return_value.json.return_value = [
+            {"uid": "0", "public_ssh_key": "ssh-rsa pubkey1"},
+            {"uid": "1", "public_ssh_key": "ssh-rsa pubkey2"},
+        ]
         result = self.harness.charm._get_auth_devices_keys_from_db()
-        self.assertEqual(result, {"0": "ssh-rsa pubkey1", "1": "ssh-rsa pubkey2"})
+        self.assertEqual(
+            result,
+            [
+                {"uid": "0", "public_ssh_key": "ssh-rsa pubkey1"},
+                {"uid": "1", "public_ssh_key": "ssh-rsa pubkey2"},
+            ],
+        )
         mock_get.assert_called_once_with(
             f"{self.harness.charm.internal_url}/api/v1/devices/?fields=uid,public_ssh_key"
         )
 
     @patch("requests.get")
     def test_update_auth_devices_keys_changed(self, mock_get):
-        mock_get.return_value.json.return_value = {"0": "ssh-rsa pubkey1"}
+        mock_get.return_value.json.return_value = [
+            {"uid": "0", "public_ssh_key": "ssh-rsa pubkey1"}
+        ]
         self.harness.charm._stored.auth_devices_keys_hash = ""
         self.harness.charm._update_auth_devices_keys()
         mock_get.assert_called_with(
@@ -171,7 +183,10 @@ class TestCharm(unittest.TestCase):
         self.assertNotEqual(self.harness.charm._stored.auth_devices_keys_hash, "")
 
         previous_hash = self.harness.charm._stored.auth_devices_keys_hash
-        mock_get.return_value.json.return_value = {"0": "ssh-rsa pubkey1", "1": "ssh-rsa pubkey2"}
+        mock_get.return_value.json.return_value = [
+            {"uid": "0", "public_ssh_key": "ssh-rsa pubkey1"},
+            {"uid": "1", "public_ssh_key": "ssh-rsa pubkey2"},
+        ]
         self.harness.charm._update_auth_devices_keys()
         mock_get.assert_called_with(
             f"{self.harness.charm.internal_url}/api/v1/devices/?fields=uid,public_ssh_key"
@@ -180,7 +195,9 @@ class TestCharm(unittest.TestCase):
 
     @patch("requests.get")
     def test_update_auth_devices_keys_not_changed(self, mock_get):
-        mock_get.return_value.json.return_value = {"0": "ssh-rsa pubkey1"}
+        mock_get.return_value.json.return_value = [
+            {"uid": "0", "public_ssh_key": "ssh-rsa pubkey1"}
+        ]
         self.harness.charm._stored.auth_devices_keys_hash = ""
         self.harness.charm._update_auth_devices_keys()
         mock_get.assert_called_with(
@@ -281,4 +298,10 @@ class TestMD5(unittest.TestCase):
         test_dict = {"key1": "value1", "key2": "value2"}
 
         result = md5_dict(test_dict)
+        self.assertNotEqual(result, str())
+
+    def test_md5_list(self):
+        test_list = [{"key1": "value"}, {"key2": "value"}]
+
+        result = md5_list(test_list)
         self.assertNotEqual(result, str())
