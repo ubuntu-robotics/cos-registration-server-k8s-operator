@@ -298,7 +298,7 @@ class AuthDevicesKeysProvider(Object):
         stored_data = _type_convert_stored(self._stored.auth_devices_keys)
 
         logger.debug(type(stored_data))
-        relation.data[self._charm.app]["auth_devices_keys"] = json.dump(stored_data)
+        relation.data[self._charm.app]["auth_devices_keys"] = json.dumps(stored_data)
 
     def _on_relation_changed(self, event: RelationChangedEvent) -> None:
         """Handle relation changes in related providers.
