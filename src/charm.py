@@ -217,7 +217,7 @@ class CosRegistrationServerCharm(CharmBase):
         database_url = (
             self.external_url
             + COS_REGISTRATION_SERVER_API_URL_BASE
-            + "applications/grafana/dashboards"
+            + "applications/grafana/dashboards/"
         )
         try:
             response = requests.get(database_url)
