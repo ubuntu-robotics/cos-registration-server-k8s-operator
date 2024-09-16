@@ -12,6 +12,7 @@ bases:
     run-on:
     - name: ubuntu
       channel: "22.04"
+
 containers:
   cos-registration-server:
     resource: ubuntu22
@@ -41,6 +42,8 @@ provides:
     interface: grafana_dashboard
   auth-devices-keys:
     interface: auth_devices_keys
+  blackbox-probes:
+    interface: blackbox_probes
 
 actions:
   get-admin-password:

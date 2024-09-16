@@ -1,2 +1,4 @@
 ops ~= 2.4
 requests
+
+cosl

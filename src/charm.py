@@ -29,6 +29,8 @@ from charms.traefik_route_k8s.v0.traefik_route import TraefikRouteRequirer
 from charms.catalogue_k8s.v0.catalogue import CatalogueConsumer, CatalogueItem
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.auth_devices_keys_k8s.v0.auth_devices_keys import AuthDevicesKeysProvider
+from charms.blackbox_k8s.v0.blackbox_probes import BlackboxProbesProvider
+
 import socket
 
 # Log messages can be retrieved using juju debug-log
@@ -134,6 +136,22 @@ class CosRegistrationServerCharm(CharmBase):
 
         self.auth_devices_keys_provider = AuthDevicesKeysProvider(
             charm=self, relation_name="auth-devices-keys"
+        )
+
+        self.blackbox_probes_provider = BlackboxProbesProvider(
+            charm=self,
+            probes=self.devices_ip_endpoints_jobs,
+            modules={
+                    "icmp_longer_timeout": {
+                        "prober": "icmp",
+                        "timeout": "30s",
+                    }
+                },
+            refresh_event=[
+                self.on.update_status,
+                self.ingress.on.ready,
+                self.on.config_changed,
+            ],
         )
 
     def _on_ingress_ready(self, _) -> None:
@@ -369,6 +387,44 @@ class CosRegistrationServerCharm(CharmBase):
             }
         )
         return pebble_layer
+
+    @property
+    def devices_ip_endpoints_jobs(self):
+        """The devices IPs from the server database."""
+        database_url = (
+            self.external_url
+            + COS_REGISTRATION_SERVER_API_URL_BASE
+            + "devices/?fields=uid,address"
+        )
+        devices_addresses = []
+        devices_uids = []
+        try:
+            response = requests.get(database_url)
+            response.raise_for_status()
+            response_json = response.json()
+            if response_json:
+                devices_addresses = [item['address'] for item in response_json]
+                devices_uids = [item['uid'] for item in response_json]
+
+            jobs = []
+            for address, uid in zip(devices_addresses, devices_uids):
+                jobs.append({
+                    'job_name': 'blackbox_icmp',
+                    'metrics_path': '/probe',
+                    'params': {
+                        'module': ['icmp']
+                    },
+                    'static_configs': [
+                        {
+                            'targets': [address],
+                            'labels': {'name': uid}
+                        }
+                    ]
+                })
+            return jobs
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to fetch devices ip from '{database_url}': {e}")
+            return {}
 
 
 if __name__ == "__main__":  # pragma: nocover
