@@ -1,17 +1,197 @@
 # Copyright 2024 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""## Overview
+"""Blackbox Probes Library.
+
+## Overview
+
+This document explains how to integrate with the Blackbox charm
+for the purpose of providing a probes metrics endpoint to Prometheus.
 
 ## Provider Library Usage
 
 The Blackbox Exporter charm interacts with its datasources using this charm
 library. The goal of this library is to be as simple to use as possible.
+Charms seeking to expose metric endpoints to be probed via Blackbox, must do so
+using the `BlackboxProbesProvider` object from this charm library.
+For the simplest use cases, the BlackboxProbesProvider object requires
+to be instantiated with a list of jobs with the endpoints to monitor.
+A probe in blackbox is defined by a module and a static_config target. Those
+are then organised in a prometheus job for proper scraping.
+The `BlackboxProbesProvider` constructor requires
+the name of the relation over which a probe target
+is exposed to the Blakcbox Exporter charm. This relation must use the
+`blackbox_probes` interface.
+The default name for the metrics endpoint relation is
+`blackbox0targets`. It is strongly recommended to use the same
+relation name for consistency across charms and doing so obviates the
+need for an additional constructor argument. The
+`BlackboxProbesProvider` object may be instantiated as follows
+
+    from charms.blackbox_k8s.v0.blackbox_probes import BlackboxProbesProvider
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        ...
+        self.probes_provider = BlackboxProbesProvider(self, probes=probes_endpoints_config)
+        ...
+
+Note that the first argument (`self`) to `BlackboxProbesProvider` is
+always a reference to the parent charm.
+
+An instantiated `BlackboxProbesProvider` object will ensure that
+the list of endpoints to be probed are passed through to Blackbox Exporter,
+which will format them to be scraped for Prometheus.
+The list of probes is provided via the constructor argument `probes`.
+The probes argument represents a necessary subset of a
+Prometheus scrape job using Python standard data
+structures. This job specification is a subset of Prometheus' own
+[scrape
+configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config)
+format but represented using Python data structures. More than one probe job
+may be provided using the `probes` argument. Hence `probes` accepts a list
+of dictionaries where each dictionary represents a subset of a `<scrape_config>`
+object as described in the Prometheus documentation. The currently
+supported configuration subset is: `job_name`, `params`,
+`static_configs`.
+
+Suppose a client charm might want to monitor a particular service
+via the http_2xx module.
+This may be done by providing the following data
+structure as the value of `probes`.
+
+```
+[
+    {
+        'params': {
+            'module': ['http_2xx']
+        },
+        "static_configs": [
+            {
+                "targets": ["http://endpoint.com"]
+            }
+        ]
+    }
+]
+```
+
+
+It is also possible to add labels to the given probes as such:
+```
+[
+    {
+        'params': {
+            'module': ['http_2xx']
+        },
+        'static_configs': [
+            {
+                'targets': [address],
+                'labels': {'name': endpoint-a}
+            }
+        ]
+    }
+]
+
+Multiple jobs with different probes and labels are allowed, but
+each job must be given a unique name:
+
+```
+[
+    {
+        "job_name": "blackbox-http-2xx",
+        'params': {
+            'module': ['http_2xx']
+        },
+        'static_configs': [
+            {
+                'targets': [address],
+                'labels': {'name': endpoint-a}
+            }
+        ]
+    },
+    {
+        "job_name": "blackbox-icmp-job",
+        'params': {
+            'module': ['icmp']
+        },
+        'static_configs': [
+            {
+                'targets': [address],
+                'labels': {'name': endpoint-a}
+            }
+        ]
+    }
+]
+```
+
+It is also possible for the client charm to define new probing modules.
+This is achieved by providing the `BlackboxProbesProvider`
+constructor an optional argument (`modules`), that represents a blackbox module.
+For details on how to write pass a module, see the
+[docs upstream](https://github.com/prometheus/blackbox_exporter/blob/master/CONFIGURATION.md).
+Further examples are provided [upstream](https://github.com/prometheus/blackbox_exporter/blob/master/example.yml).
+An example of defining a module is:
+
+modules={
+            "http_2xx_longer_timeout": {
+                "prober": "http"
+                "timeout": "30s"  # default is 5s
+            }
+        }
+
+## Consumer Library Usage
+
+The `BlackboxProbesRequirer` object may be used by the Blackbox Exporter
+charms to retrieve the probes to be monitored. For this
+purposes a Blackbox Exporter charm needs to do two thingsL
+
+1. Instantiate the `BlackboxProbesRequirer` object by providing it a
+reference to the parent (Blackbox Exporter) charm and optionally the name of
+the relation that the Blackbox Exporter charm uses to interact with probes
+targets. This relation must confirm to the `blackbox_probes`
+interface and it is strongly recommended that this relation be named
+`blackbox-probes` which is its default value.
+
+For example a Blackbox Exporter may instantiate the
+`BlackboxProbesRequirer` in its constructor as follows
+
+    from charms.blackbox_k8s.v0.blackbox_probes import BlackboxProbesRequirer
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        ...
+        self.probes_consumer = BlackboxProbesRequirer(
+            charm=self,
+            relation_name="blackbox-probes",
+        )
+        ...
+
+The probes consumer must be instantiated before the prometheus_scrape MetricsEndpoint Provider,
+because Blackbox uses the probes to define metrics endpoints to Prometheus.
+
+2. A Blackbox Exporter charm also needs to respond to the
+`TargetsChangedEvent` event of the `BlackboxProbesRequirer` by adding itself as
+an observer for these events, as in
+
+    self.framework.observe(
+        self.probes_consumer.on.targets_changed,
+        self._on_scrape_targets_changed,
+    )
+
+In responding to the `TargetsChangedEvent` event the Blackbox Exporter
+charm must update its configuration so that any new probe
+is added and/or old ones removed from the list.
+For this purpose the `BlackboxProbesRequirer` object
+exposes a `probes()` method that returns a list of probes jobs. Each
+element of this list is a probes configuration to be added to the list of jobs for
+Prometheus to monitor. 
+Same goes for the list of client charm defined modules. The `BlackboxProbesRequirer` object
+exposes an option `modules()` method that returns a dict of the new modules to be added to the
+Blackbox configuration file.
 """
 
 import logging
 import json
-import yaml
 from typing import Dict, List, Optional, Union
 
 from ops import Object
@@ -48,7 +228,7 @@ class BlackboxProbesProvider(Object):
     def __init__(
         self,
         charm: CharmBase,
-        probes: List,
+        probes: List[Dict],
         modules: Optional[Dict] = None,
         refresh_event: Optional[Union[BoundEvent, List[BoundEvent]]] = None,
         relation_name: str = DEFAULT_RELATION_NAME,
@@ -63,8 +243,6 @@ class BlackboxProbesProvider(Object):
                 self,
                 probes = [
                     ""
-                    - job_name: 'blackbox_http_2xx'
-                      metrics_path: /probe
                       params:
                         module: [http_2xx]
                       static_configs:
@@ -74,8 +252,6 @@ class BlackboxProbesProvider(Object):
                                 name: "device"
                     "",
                     ""
-                    - job_name: 'blackbox_http_2xx_longer_timeout'
-                      metrics_path: /probe
                       params:
                         module: [http_2xx_longer_timeout]
                       static_configs:
@@ -99,10 +275,8 @@ class BlackboxProbesProvider(Object):
             charm: a `CharmBase` object which manages the
                 `BlackboxProbesProvider` object. Generally, this is `self` in
                 the instantiating class.
-            probes: the probes to configure in Blackbox Exporter passed as
-                known args to the constructor. The "key" should correspond to
-                the chosen module, while the "value" is a list of endpoints to
-                probe with that module.
+            probes: the probes to configure in Blackbox Exporter passed as a list
+                    of configuration probes in python structures.
             modules: an optional definition of modules for Blackbox Exporter to
                 use. For details on how to write pass a module, see the
                 [docs upstream](https://github.com/prometheus/blackbox_exporter/blob/master/CONFIGURATION.md).
@@ -111,15 +285,16 @@ class BlackboxProbesProvider(Object):
                 on which the probes and modules should be updated.
             relation_name: name of the relation providing the Blackbox Probes
                 service. It's recommended to not change it, to ensure a
-                consistent experience acrosss all charms that use the library.
+                consistent experience across all charms that use the library.
         """
         self.topology = JujuTopology.from_charm(charm)
         self._charm = charm
         self._relation_name = relation_name
-
-        events = self._charm.on[self._relation_name]
         self._probes = [] if probes is None else probes
         self._modules = {} if modules is None else modules
+
+        events = self._charm.on[self._relation_name]
+        self.framework.observe(events.relation_changed, self.set_probes_spec)
 
         if not refresh_event:
             if len(self._charm.meta.containers) == 1:
@@ -139,6 +314,10 @@ class BlackboxProbesProvider(Object):
         for ev in refresh_event:
             self.framework.observe(ev, self.set_probes_spec)
 
+    #TODO: make sure the probes passed have at least PARAMS MODULE and STATIC_CONFIG
+    def validate_probes(self):
+        pass
+
     def set_probes_spec(self, _=None):
         """Ensure probes target information is made available to Blackbox Exporter.
 
@@ -155,16 +334,14 @@ class BlackboxProbesProvider(Object):
 
     def _prefix_probes(self, prefix: str):
         """Prefix the job_names and the probes_modules with the charm metadata."""
-        for job in self._probes:
-            job_name = job["job_name"]
-            job["job_name"] = prefix + "_" + job_name if job_name else prefix
-            job_params = job["params"].get('params', {}).get('module', [])
-            for param in job_params:
-                modules = param["module"]
-                for module in modules:
-                    if module in self._modules:
-                        prefixed_module_value = f"{prefix}_{module}"
-                        job['params']['module'] = prefixed_module_value
+        for probe in self._probes:
+            job_name = probe["job_name"]
+            probe["job_name"] = prefix + job_name if job_name else prefix
+            probe_module = probe.get("params", {}).get("module", [])
+            for module in probe_module:
+                if module in self._modules:
+                    prefixed_module_value = f"{prefix}_{module}"
+                    probe['params']['module'] = prefixed_module_value
 
     def _prefix_modules(self, prefix: str) -> None:
         """Prefix the modules with the charm metadata."""

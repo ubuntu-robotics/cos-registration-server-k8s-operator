@@ -140,13 +140,7 @@ class CosRegistrationServerCharm(CharmBase):
 
         self.blackbox_probes_provider = BlackboxProbesProvider(
             charm=self,
-            probes=self.devices_ip_endpoints_jobs,
-            modules={
-                    "icmp_longer_timeout": {
-                        "prober": "icmp",
-                        "timeout": "30s",
-                    }
-                },
+            probes=self.self_probe + self.devices_ip_endpoints_probes,
             refresh_event=[
                 self.on.update_status,
                 self.ingress.on.ready,
@@ -389,7 +383,24 @@ class CosRegistrationServerCharm(CharmBase):
         return pebble_layer
 
     @property
-    def devices_ip_endpoints_jobs(self):
+    def self_probe(self):
+        """The self-monitoring blackbox probe."""
+        probe = {
+            'job_name': 'blackbox_http_2xx',
+            'params': {
+                'module': ['http_2xx']
+            },
+            'static_configs': [
+                {
+                    'targets': [self.external_url + "/api/v1/health/"],
+                    'labels': {'name': "cos-registration-server"}
+                }
+            ]
+        }
+        return [probe]
+
+    @property
+    def devices_ip_endpoints_probes(self):
         """The devices IPs from the server database."""
         database_url = (
             self.external_url
@@ -424,7 +435,7 @@ class CosRegistrationServerCharm(CharmBase):
             return jobs
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to fetch devices ip from '{database_url}': {e}")
-            return {}
+            return []
 
 
 if __name__ == "__main__":  # pragma: nocover
