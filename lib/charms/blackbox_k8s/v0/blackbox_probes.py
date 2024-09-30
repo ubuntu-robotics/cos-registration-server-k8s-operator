@@ -23,7 +23,7 @@ the name of the relation over which a probe target
 is exposed to the Blakcbox Exporter charm. This relation must use the
 `blackbox_probes` interface.
 The default name for the metrics endpoint relation is
-`blackbox0targets`. It is strongly recommended to use the same
+`blackbox-targets`. It is strongly recommended to use the same
 relation name for consistency across charms and doing so obviates the
 need for an additional constructor argument. The
 `BlackboxProbesProvider` object may be instantiated as follows
@@ -43,16 +43,15 @@ An instantiated `BlackboxProbesProvider` object will ensure that
 the list of endpoints to be probed are passed through to Blackbox Exporter,
 which will format them to be scraped for Prometheus.
 The list of probes is provided via the constructor argument `probes`.
-The probes argument represents a necessary subset of a
-Prometheus scrape job using Python standard data
-structures. This job specification is a subset of Prometheus' own
+The probes argument represents a necessary subset (module and static_configs) of a
+Prometheus scrape job using Python standard data structures.
+This job specification is a subset of Prometheus' own
 [scrape
 configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config)
 format but represented using Python data structures. More than one probe job
 may be provided using the `probes` argument. Hence `probes` accepts a list
 of dictionaries where each dictionary represents a subset of a `<scrape_config>`
-object as described in the Prometheus documentation. The currently
-supported configuration subset is: `job_name`, `params`,
+object. The currently supported configuration subset is: `job_name`, `params`,
 `static_configs`.
 
 Suppose a client charm might want to monitor a particular service
@@ -143,10 +142,10 @@ modules={
 
 The `BlackboxProbesRequirer` object may be used by the Blackbox Exporter
 charms to retrieve the probes to be monitored. For this
-purposes a Blackbox Exporter charm needs to do two thingsL
+purposes a Blackbox Exporter charm needs to do two things:
 
 1. Instantiate the `BlackboxProbesRequirer` object by providing it a
-reference to the parent (Blackbox Exporter) charm and optionally the name of
+reference to the parent (Blackbox Exporter) charm and, optionally, the name of
 the relation that the Blackbox Exporter charm uses to interact with probes
 targets. This relation must confirm to the `blackbox_probes`
 interface and it is strongly recommended that this relation be named
@@ -167,7 +166,7 @@ For example a Blackbox Exporter may instantiate the
         ...
 
 The probes consumer must be instantiated before the prometheus_scrape MetricsEndpoint Provider,
-because Blackbox uses the probes to define metrics endpoints to Prometheus.
+because Blackbox defines new metrics endpoints to send to Prometheus.
 
 2. A Blackbox Exporter charm also needs to respond to the
 `TargetsChangedEvent` event of the `BlackboxProbesRequirer` by adding itself as
@@ -186,7 +185,7 @@ exposes a `probes()` method that returns a list of probes jobs. Each
 element of this list is a probes configuration to be added to the list of jobs for
 Prometheus to monitor. 
 Same goes for the list of client charm defined modules. The `BlackboxProbesRequirer` object
-exposes an option `modules()` method that returns a dict of the new modules to be added to the
+exposes a `modules()` method that returns a dict of the new modules to be added to the
 Blackbox configuration file.
 """
 
@@ -266,7 +265,6 @@ class DatabagModel(BaseModel):
             return cls.model_validate_json(json.dumps(data))  # type: ignore
         except pydantic.ValidationError as e:
             msg = f"failed to validate databag: {databag}"
-            print(msg)
             logger.debug(msg, exc_info=True)
             raise DataValidationError(msg) from e
 
@@ -347,13 +345,13 @@ class ScrapeMetadataModel(BaseModel):
     unit: str = Field(description="Juju unit name.")
 
 class ApplicationDataModel(DatabagModel):
-    scrape_metadata: Json[ScrapeMetadataModel] = Field(
+    scrape_metadata: ScrapeMetadataModel = Field(
         description="Metadata providing information about the Juju topology."
     )
-    scrape_probes: Json[List[ProbesJobModel]] = Field(
+    scrape_probes: List[ProbesJobModel] = Field(
         description="List of scrape job configurations specifying static probes targets."
     )
-    scrape_modules: Optional[Json[Dict[str, ModuleConfig]]] = Field(
+    scrape_modules: Optional[Dict[str, ModuleConfig]] = Field(
         description="List of custom blackbox probing modules."
     )
 
@@ -463,8 +461,7 @@ class BlackboxProbesProvider(Object):
         elif not isinstance(refresh_event, list):
             refresh_event = [refresh_event]
 
-        topology = JujuTopology.from_dict(self._scrape_metadata)
-        module_name_prefix = "juju_{}_".format(topology.identifier)
+        module_name_prefix = "juju_{}_".format(self.topology.identifier)
         self._prefix_probes(module_name_prefix)
         self._prefix_modules(module_name_prefix)
 
@@ -484,9 +481,9 @@ class BlackboxProbesProvider(Object):
         for relation in self._charm.model.relations[self._relation_name]:
             try:
                 ApplicationDataModel(
-                    scrape_metadata=json.dumps(self._scrape_metadata),
-                    scrape_probes=json.dumps(self._probes),
-                    scrape_modules=json.dumps(self._modules),
+                    scrape_metadata=self._scrape_metadata,
+                    scrape_probes=self._probes,
+                    scrape_modules=self._modules,
                 ).dump(relation.data[self._charm.app])
 
             except ModelError as e:
@@ -503,7 +500,7 @@ class BlackboxProbesProvider(Object):
                         continue
                 raise
             except pydantic.ValidationError as e:
-                self.on.invalid_probe.emit(errors="")
+                self.on.invalid_probe.emit(errors=str(e))
 
     def _prefix_probes(self, prefix: str):
         """Prefix the job_names and the probes_modules with the charm metadata."""
@@ -624,8 +621,13 @@ class BlackboxProbesRequirer(Object):
         scrape_probes = []
 
         for relation in self._charm.model.relations[self._relation_name]:
-            static_probes_jobs = json.loads(relation.data[relation.app].get("scrape_probes", "[]"))
-            scrape_probes.extend(static_probes_jobs)
+            try:
+                if not relation.data[relation.app]:
+                    return scrape_probes
+                databag = ApplicationDataModel.load(relation.data[relation.app])
+                scrape_probes.extend([probe.model_dump() for probe in databag.scrape_probes])
+            except (json.JSONDecodeError, pydantic.ValidationError, DataValidationError):
+                logger.error("Invalid probes provided")
 
         return scrape_probes
 
@@ -639,7 +641,12 @@ class BlackboxProbesRequirer(Object):
         blackbox_scrape_modules = {}
 
         for relation in self._charm.model.relations[self._relation_name]:
-            scrape_modules = json.loads(relation.data[relation.app].get("scrape_modules", "{}"))
-            blackbox_scrape_modules.update(scrape_modules)
+            try:
+                if not relation.data[relation.app]:
+                    return blackbox_scrape_modules
+                databag = ApplicationDataModel.load(relation.data[relation.app])
+                blackbox_scrape_modules.update(databag.scrape_modules)
+            except (json.JSONDecodeError, pydantic.ValidationError, DataValidationError):
+                logger.error("Invalid blackbox module provided provided")
 
         return blackbox_scrape_modules
