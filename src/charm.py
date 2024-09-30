@@ -426,7 +426,7 @@ class CosRegistrationServerCharm(CharmBase):
             jobs = []
             for address, uid in zip(devices_addresses, devices_uids):
                 jobs.append({
-                    'job_name': 'blackbox_icmp',
+                    'job_name': f'blackbox_icmp_{uid}',
                     'metrics_path': '/probe',
                     'params': {
                         'module': ['icmp']
