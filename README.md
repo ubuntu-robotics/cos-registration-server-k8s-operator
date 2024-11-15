@@ -1,6 +1,6 @@
 # COS registration server Operator (k8s)
 
-The [COS registration server](https://github.com/ubuntu-robotics/cos-registration-server) but as an operator
+The [COS registration server](https://github.com/canonical/cos-registration-server) but as an operator
 
 ## Basic Deployment
 
@@ -13,7 +13,7 @@ To deploy the local charm follow these instructions:
 - Clone the source repository
 
   ```
-  git clone https://github.com/ubuntu-robotics/cos-registration-server-k8s-operator.git
+  git clone https://github.com/canonical/cos-registration-server-k8s-operator.git
   ```
 
 - Build the charm with
@@ -25,7 +25,7 @@ To deploy the local charm follow these instructions:
 - Deploy the charm with the following command:
 
   ```
-  juju deploy ./cos-registration-server_ubuntu-22.04-amd64.charm --resource ghcr.io/ubuntu-robotics/cos-registration-server:dev
+  juju deploy ./cos-registration-server_ubuntu-22.04-amd64.charm --resource ghcr.io/canonical/cos-registration-server:dev
   ```
 
 - Test the installation by executing the following command:
@@ -47,7 +47,7 @@ To deploy with COS lite bundle follow these instructions:
 - Clone the source repository
 
   ```
-  git clone https://github.com/ubuntu-robotics/cos-registration-server-k8s-operator.git
+  git clone https://github.com/canonical/cos-registration-server-k8s-operator.git
   ```
 
 - Enter the folder

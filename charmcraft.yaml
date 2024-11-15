@@ -23,7 +23,7 @@ resources:
   ubuntu22:
     type: oci-image
     description: ubuntu 22 base image
-    upstream-source: ghcr.io/ubuntu-robotics/cos-registration-server:dev
+    upstream-source: ghcr.io/canonical/cos-registration-server:dev
 
 storage:
   database:
