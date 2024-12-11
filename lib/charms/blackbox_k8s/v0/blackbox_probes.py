@@ -1,18 +1,18 @@
 # Copyright 2024 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""Blackbox Probes Library.
+"""Blackbox Exporter Probes Library.
 
 ## Overview
 
-This document explains how to integrate with the Blackbox charm
+This document explains how to integrate with the Blackbox Exporter charm
 for the purpose of providing a probes metrics endpoint to Prometheus.
 
 ## Provider Library Usage
 
 The Blackbox Exporter charm interacts with its datasources using this charm
-library. The goal of this library is to be as simple to use as possible.
-Charms seeking to expose metric endpoints to be probed via Blackbox, must do so
+library.
+Charms seeking to expose probes for Blackbox, may do so
 using the `BlackboxProbesProvider` object from this charm library.
 For the simplest use cases, the BlackboxProbesProvider object requires
 to be instantiated with a list of jobs with the endpoints to monitor.
@@ -21,27 +21,35 @@ are then organised in a prometheus job for proper scraping.
 The `BlackboxProbesProvider` constructor requires
 the name of the relation over which a probe target
 is exposed to the Blakcbox Exporter charm. This relation must use the
-`blackbox_probes` interface.
+`blackbox_exporter_probes` interface.
 The default name for the metrics endpoint relation is
-`blackbox-targets`. It is strongly recommended to use the same
+`blackbox-probes`. It is strongly recommended to use the same
 relation name for consistency across charms and doing so obviates the
 need for an additional constructor argument. The
-`BlackboxProbesProvider` object may be instantiated as follows
+`BlackboxProbesProvider` object may be instantiated as follows:
 
     from charms.blackbox_k8s.v0.blackbox_probes import BlackboxProbesProvider
 
     def __init__(self, *args):
         super().__init__(*args)
         ...
-        self.probes_provider = BlackboxProbesProvider(self, probes=probes_endpoints_config)
+        self.probes_provider = BlackboxProbesProvider(
+            self,
+            probes=[{
+                'params': {'module': ['http_2xx']},
+                'static_configs': [
+                    {'targets': ['http://endpoint.com']}
+                ]
+            }]
+        )
         ...
 
 Note that the first argument (`self`) to `BlackboxProbesProvider` is
 always a reference to the parent charm.
 
-An instantiated `BlackboxProbesProvider` object will ensure that
-the list of endpoints to be probed are passed through to Blackbox Exporter,
-which will format them to be scraped for Prometheus.
+A `BlackboxProbesProvider` object will ensure that
+the list of probes are provided to Blackbox which will ,
+which will export them to Prometheus for scraping.
 The list of probes is provided via the constructor argument `probes`.
 The probes argument represents a necessary subset (module and static_configs) of a
 Prometheus scrape job using Python standard data structures.
@@ -147,9 +155,9 @@ purposes a Blackbox Exporter charm needs to do two things:
 1. Instantiate the `BlackboxProbesRequirer` object by providing it a
 reference to the parent (Blackbox Exporter) charm and, optionally, the name of
 the relation that the Blackbox Exporter charm uses to interact with probes
-targets. This relation must confirm to the `blackbox_probes`
+targets. This relation must conform to the `blackbox_exporter_probes`
 interface and it is strongly recommended that this relation be named
-`blackbox-probes` which is its default value.
+`probes` which is its default value.
 
 For example a Blackbox Exporter may instantiate the
 `BlackboxProbesRequirer` in its constructor as follows
@@ -159,13 +167,13 @@ For example a Blackbox Exporter may instantiate the
     def __init__(self, *args):
         super().__init__(*args)
         ...
-        self.probes_consumer = BlackboxProbesRequirer(
+        self.probes_requirer = BlackboxProbesRequirer(
             charm=self,
-            relation_name="blackbox-probes",
+            relation_name="probes",
         )
         ...
 
-The probes consumer must be instantiated before the prometheus_scrape MetricsEndpoint Provider,
+The probes requirer must be instantiated before the prometheus_scrape MetricsEndpoint Provider,
 because Blackbox defines new metrics endpoints to send to Prometheus.
 
 2. A Blackbox Exporter charm also needs to respond to the
@@ -173,7 +181,7 @@ because Blackbox defines new metrics endpoints to send to Prometheus.
 an observer for these events, as in
 
     self.framework.observe(
-        self.probes_consumer.on.targets_changed,
+        self.probes_requirer.on.targets_changed,
         self._on_scrape_targets_changed,
     )
 
@@ -191,26 +199,34 @@ Blackbox configuration file.
 
 import logging
 import json
+import copy
 from typing import Dict, List, Optional, Union, MutableMapping
 
 from ops import Object
 from ops.charm import CharmBase
-from ops.framework import BoundEvent, EventBase
-from ops.charm import CharmBase, RelationRole
 from cosl import JujuTopology
-from ops.model import ModelError, Relation
+from ops.model import ModelError
 from ops.framework import (
     BoundEvent,
     EventBase,
     EventSource,
     Object,
     ObjectEvents,
+    StoredDict,
+    StoredList,
+    StoredState,
+)
+from ops.model import (
+    StatusBase,
+    ActiveStatus,
+    BlockedStatus,
+    WaitingStatus,
 )
 import pydantic
-from pydantic import BaseModel, ConfigDict, Field, Json
+from pydantic import BaseModel, ConfigDict, Field
 
 # The unique Charmhub library identifier, never change it
-LIBID = "1"
+LIBID = "857fd3ed0a414dc5a141b7d6818a883d"
 
 # Increment this major API version when introducing breaking changes
 LIBAPI = 0
@@ -223,7 +239,7 @@ PYDEPS = ["pydantic"]
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_RELATION_NAME = "blackbox-probes"
+DEFAULT_RELATION_NAME = "probes"
 
 class DataValidationError(Exception):
     """Raised when data validation fails on IPU relation data."""
@@ -380,6 +396,7 @@ class BlackboxProbesProvider(Object):
     """A provider object for Blackbox Exporter probes."""
 
     on = BlackboxProbesProviderEvents() # pyright: ignore
+    _stored = StoredState()
 
     def __init__(
         self,
@@ -390,42 +407,20 @@ class BlackboxProbesProvider(Object):
         relation_name: str = DEFAULT_RELATION_NAME,
     ):
         super().__init__(charm, relation_name)
+        self._stored.set_default(
+            errors=[],
+        )
         """Construct a Blackbox Exporter client.
 
-        To integrate with Blackbox Exporter, a charm should instantiate a
-        `BlackboxProbesProvider` as follows:
-
-            self.blackbox_probes = BlackboxProbesProvider(
-                self,
-                probes = [
-                    ""
-                      params:
-                        module: [http_2xx]
-                      static_configs:
-                        - targets: 
-                            - http://target-a
-                            labels: 
-                                name: "device"
-                    "",
-                    ""
-                      params:
-                        module: [http_2xx_longer_timeout]
-                      static_configs:
-                        - targets: ['http://target-b' 'http://target-c']
-                    ""
-                ],
-                modules={
-                    "http_2xx_longer_timeout": {
-                        "prober": "http"
-                        "timeout": "30s"  # default is 5s
-                    }
-                },
-                refresh_event=[
-                    self.on.update_status,
-                    self.ingress.on.ready_for_unit,
-                ],
-                relation_name="blackbox-probes",
-            )
+        Charms seeking to expose metric endpoints to be probed via Blackbox, must do so
+        using the `BlackboxProbesProvider` object from this charm library.
+        For the simplest use cases, the BlackboxProbesProvider object requires
+        to be instantiated with a list of jobs with the endpoints to monitor.
+        A probe in blackbox is defined by a module and a static_config target. Those
+        are then organised in a prometheus job for proper scraping.
+        The `BlackboxProbesProvider` constructor requires
+        the name of the relation over which a probe target
+        is exposed to the Blakcbox Exporter charm.
 
         Args:
             charm: a `CharmBase` object which manages the
@@ -446,11 +441,12 @@ class BlackboxProbesProvider(Object):
         self.topology = JujuTopology.from_charm(charm)
         self._charm = charm
         self._relation_name = relation_name
-        self._probes = [] if probes is None else probes
-        self._modules = {} if modules is None else modules
+
+        self._probes = [] if probes is None else copy.deepcopy(probes)
+        self._modules = {} if modules is None else copy.deepcopy(modules)
 
         events = self._charm.on[self._relation_name]
-        self.framework.observe(events.relation_changed, self.set_probes_spec)
+        self.framework.observe(events.relation_changed, self._set_probes_spec)
 
         if not refresh_event:
             if len(self._charm.meta.containers) == 1:
@@ -461,31 +457,37 @@ class BlackboxProbesProvider(Object):
         elif not isinstance(refresh_event, list):
             refresh_event = [refresh_event]
 
-        module_name_prefix = "juju_{}_".format(self.topology.identifier)
+        # always include leader elected event, so that the probes are correctly updated on new leaders
+        refresh_event.append(self._charm.on.leader_elected)
+
+        module_name_prefix = f"juju_{self.topology.identifier}"
+        # we should deduplicate (or discard?) incoming probes/modules with the same job_name
         self._prefix_probes(module_name_prefix)
         self._prefix_modules(module_name_prefix)
 
-        self.framework.observe(events.relation_joined, self.set_probes_spec)
+        self.framework.observe(events.relation_joined, self._set_probes_spec)
         for ev in refresh_event:
-            self.framework.observe(ev, self.set_probes_spec)
+            self.framework.observe(ev, self._set_probes_spec)
 
-    def set_probes_spec(self, _=None):
+    def _set_probes_spec(self, _=None):
         """Ensure probes target information is made available to Blackbox Exporter.
 
         When a probes provider charm is related to a blackbox exporter charm, the
-        probes provider sets specification and metadata related to it
+        probes provider sets specification and metadata related to it.
+        These information are set using Juju application data, since probes are not
+        tied to a specific unit.
         """
         if not self._charm.unit.is_leader():
             return
         
+        errors = []
         for relation in self._charm.model.relations[self._relation_name]:
             try:
-                ApplicationDataModel(
+                databag = ApplicationDataModel(
                     scrape_metadata=self._scrape_metadata,
                     scrape_probes=self._probes,
                     scrape_modules=self._modules,
                 ).dump(relation.data[self._charm.app])
-
             except ModelError as e:
                 # args are bytes
                 msg = e.args[0]
@@ -500,13 +502,23 @@ class BlackboxProbesProvider(Object):
                         continue
                 raise
             except pydantic.ValidationError as e:
-                self.on.invalid_probe.emit(errors=str(e))
+                logger.error("Invalid probes provided")
+                error_message = f"Invalid probes provided in relation {relation.id}: {e}"
+                errors.append(error_message)
+
+        self._stored.errors = errors
 
     def _prefix_probes(self, prefix: str):
-        """Prefix the job_names and the probes_modules with the charm metadata."""
+        """Prefix the probes job_names and the probe_modules with the charm metadata.
+
+        The probe module will be prefixed only if it is a custom module defined by the
+        provider and so present in the modules member.
+
+        Args:
+            prefix: the prefix as a string derived from the juju topology identifier
+        """
         for probe in self._probes:
-            job_name = probe["job_name"]
-            probe["job_name"] = prefix + job_name if job_name else prefix
+            probe["job_name"] = "_".join(filter(None, [prefix, probe.get("job_name")]))
             probe_module = probe.get("params", {}).get("module", [])
             for module in probe_module:
                 if module in self._modules:
@@ -515,7 +527,21 @@ class BlackboxProbesProvider(Object):
 
     def _prefix_modules(self, prefix: str) -> None:
         """Prefix the modules with the charm metadata."""
-        self._modules = {f"{prefix}{key}": value for key, value in self._modules.items()}
+        self._modules = {f"{prefix}_{key}": value for key, value in self._modules.items()}
+
+    def get_status(self) -> StatusBase:
+        """Collect the status of probes and errors from stored state.
+
+        Returns:
+            StatusBase: Status representing the state of the probes collection.
+
+            - ActiveStatus: All probes are valid and ready to be used.
+            - BlockedStatus: Errors occurred during probes parsing and require intervention.
+        """
+        if self._stored.errors:
+            error_messages = "; ".join(self._stored.errors)
+            return BlockedStatus(f"Errors occurred in probe configuration")
+        return ActiveStatus()
 
     @property
     def _scrape_metadata(self) -> dict:
@@ -546,10 +572,22 @@ class MonitoringEvents(ObjectEvents):
 
     targets_changed = EventSource(TargetsChangedEvent)
 
+def _type_convert_stored(obj):
+    """Convert Stored* to their appropriate types, recursively."""
+    if isinstance(obj, StoredList):
+        return list(map(_type_convert_stored, obj))
+    if isinstance(obj, StoredDict):
+        rdict = {}  # type: Dict[Any, Any]
+        for k in obj.keys():
+            rdict[k] = _type_convert_stored(obj[k])
+        return rdict
+    return obj
+
 class BlackboxProbesRequirer(Object):
     """A requirer object for Blackbox Exporter probes."""
 
     on = MonitoringEvents()  # pyright: ignore
+    _stored = StoredState()
 
     def __init__(self, charm: CharmBase, relation_name: str = DEFAULT_RELATION_NAME):
         """"A requirer object for Blackbox Exporter probes.
@@ -558,20 +596,15 @@ class BlackboxProbesRequirer(Object):
             charm: a `CharmBase` instance that manages this
                 instance of the Blackbox Exporter service.
             relation_name: an optional string name of the relation between `charm`
-                and the Blackbox Exporter charmed service. The default is "blackbox-probes".
-
-        Raises:
-            RelationNotFoundError: If there is no relation in the charm's metadata.yaml
-                with the same name as provided via `relation_name` argument.
-            RelationInterfaceMismatchError: The relation with the same name as provided
-                via `relation_name` argument does not have the `prometheus_scrape` relation
-                interface.
-            RelationRoleMismatchError: If the relation with the same name as provided
-                via `relation_name` argument does not have the `RelationRole.requires`
-                role.
+                and the Blackbox Exporter charmed service. The default is "probes".
         """
 
         super().__init__(charm, relation_name)
+        self._stored.set_default(
+            scrape_probes=[],
+            errors=[],
+            needs_update=True,
+        )
         self._charm = charm
         self._relation_name = relation_name
         events = self._charm.on[relation_name]
@@ -593,7 +626,7 @@ class BlackboxProbesRequirer(Object):
                 charm must update its scrape configuration.
         """
         rel_id = event.relation.id
-
+        self._stored.needs_update = True
         self.on.targets_changed.emit(relation_id=rel_id)
 
     def _on_probes_provider_relation_departed(self, event):
@@ -609,27 +642,63 @@ class BlackboxProbesRequirer(Object):
                unit has departed.
         """
         rel_id = event.relation.id
+        self._stored.needs_update = True
         self.on.targets_changed.emit(relation_id=rel_id)
 
+    def get_status(self) -> StatusBase:
+        """Collect the status of probes and errors from stored state.
+
+        Returns:
+            StatusBase: Status representing the state of the probes collection.
+
+            - ActiveStatus: All probes are valid and ready to be used.
+            - BlockedStatus: Errors occurred during probes parsing and require intervention.
+            - WaitingStatus: Probes are still being fetched or processed.
+        """
+        if self._stored.errors:
+            error_messages = "; ".join(self._stored.errors)
+            return BlockedStatus(f"Errors occurred in probe configuration: {error_messages}")
+        if self._stored.needs_update:
+            return WaitingStatus("Probes are being updated, please wait.")
+        return ActiveStatus()
+
+    def _update_probes(self):
+        """Update the cache of probes and errors by iterating over relation data."""
+        scrape_probes = []
+        errors = []
+
+        for relation in self._charm.model.relations[self._relation_name]:
+            try:
+                if not relation.data[relation.app]:
+                    continue
+                databag = ApplicationDataModel.load(relation.data[relation.app])
+                scrape_probes.extend([probe.model_dump() for probe in databag.scrape_probes])
+            except (json.JSONDecodeError, pydantic.ValidationError, DataValidationError) as e:
+                logger.error("Invalid probes provided")
+                error_message = f"Invalid probes provided in relation {relation.id}: {e}"
+                errors.append(error_message)
+
+        self._stored.scrape_probes = scrape_probes
+        self._stored.errors = errors
+        self._stored.needs_update = False
+
+        return scrape_probes
+
     def probes(self) -> list:
-        """Fetch the dict of probes to scrape.
+        """Fetch the dict of probes to scrape, if they need update
 
         Returns:
             A dict consisting of all the static probes configurations
             for each related `BlackboxExporterProvider'.
         """
-        scrape_probes = []
 
-        for relation in self._charm.model.relations[self._relation_name]:
-            try:
-                if not relation.data[relation.app]:
-                    return scrape_probes
-                databag = ApplicationDataModel.load(relation.data[relation.app])
-                scrape_probes.extend([probe.model_dump() for probe in databag.scrape_probes])
-            except (json.JSONDecodeError, pydantic.ValidationError, DataValidationError):
-                logger.error("Invalid probes provided")
+        if self._stored.needs_update:
+            self._update_probes()
 
-        return scrape_probes
+        probes = [] + _type_convert_stored(
+            self._stored.scrape_probes  # pyright: ignore
+        )
+        return probes
 
     def modules(self) -> dict:
         """Fetch the dict of blackbox modules to configure.
@@ -643,7 +712,7 @@ class BlackboxProbesRequirer(Object):
         for relation in self._charm.model.relations[self._relation_name]:
             try:
                 if not relation.data[relation.app]:
-                    return blackbox_scrape_modules
+                    continue
                 databag = ApplicationDataModel.load(relation.data[relation.app])
                 blackbox_scrape_modules.update(databag.scrape_modules)
             except (json.JSONDecodeError, pydantic.ValidationError, DataValidationError):

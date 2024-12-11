@@ -17,6 +17,7 @@ from ops.charm import (
     CharmBase,
     HookEvent,
     RelationJoinedEvent,
+    CollectStatusEvent,
 )
 
 from ops.framework import StoredState
@@ -104,6 +105,7 @@ class CosRegistrationServerCharm(CharmBase):
         self.framework.observe(self.on.leader_elected, self._configure_ingress)
         self.framework.observe(self.on.config_changed, self._configure_ingress)
         self.framework.observe(self.on.update_status, self._on_update_status)
+        self.framework.observe(self.on.collect_app_status, self._on_collect_status)
 
         self.framework.observe(
             self.on.cos_registration_server_pebble_ready, self._update_layer_and_restart
@@ -147,8 +149,6 @@ class CosRegistrationServerCharm(CharmBase):
                 self.on.config_changed,
             ],
         )
-
-        self.framework.observe(self.blackbox_probes_provider.on.invalid_probe, self._on_invalid_probe)
 
     def _on_ingress_ready(self, _) -> None:
         """Once Traefik tells us our external URL, make sure we reconfigure the charm."""
@@ -306,9 +306,8 @@ class CosRegistrationServerCharm(CharmBase):
             logger.error(f"Failed to fetch auth devices keys from '{database_url}': {e}")
             return None
 
-    def _on_invalid_probe(self, event) -> None:
-        """Check from invalid probes events and set the charm to Blocked if so."""
-        self.unit.status = BlockedStatus("Invalid probe provided")
+    def _on_collect_status(self, event: CollectStatusEvent):
+        event.add_status(self.blackbox_probes_provider.get_status())
 
     @property
     def _scheme(self) -> str:
