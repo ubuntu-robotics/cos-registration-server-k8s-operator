@@ -5,6 +5,7 @@ description: |
 type: charm
 assumes:
   - k8s-api
+  - juju >= 3.4.3
 bases:
   - build-on:
     - name: ubuntu
@@ -35,6 +36,9 @@ requires:
     limit: 1
   catalogue:
     interface: catalogue
+  logging:
+   interface: loki_push_api
+   optional: true
 
 provides:
   grafana-dashboard:
