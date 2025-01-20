@@ -1,0 +1,15 @@
+name: Release Charm to Edge and Publish Libraries
+
+on:
+  push:
+    paths-ignore:
+      - '.gitignore'
+      - 'LICENSE'
+      - '**.md'
+    branches:
+      - main
+
+jobs:
+  release:
+    uses: canonical/observability/.github/workflows/charm-release.yaml@main
+    secrets: inherit
