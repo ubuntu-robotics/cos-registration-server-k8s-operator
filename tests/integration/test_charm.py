@@ -27,9 +27,7 @@ async def test_build_and_deploy(ops_test: OpsTest):
     resources = {"cos-registration-server": METADATA["resources"]["ubuntu22"]["upstream-source"]}
 
     # Deploy the charm and wait for active/idle status
-    await asyncio.gather(
-        ops_test.model.deploy(charm, resources=resources, application_name=APP_NAME),
-        ops_test.model.wait_for_idle(
-            apps=[APP_NAME], status="active", raise_on_blocked=True, timeout=1000
-        ),
+    await ops_test.model.deploy(charm, resources=resources, application_name=APP_NAME)
+    await ops_test.model.wait_for_idle(
+        apps=[APP_NAME], status="active", raise_on_blocked=True, timeout=1000
     )
