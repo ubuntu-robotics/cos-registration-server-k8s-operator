@@ -24,7 +24,7 @@ async def test_build_and_deploy(ops_test: OpsTest):
     """
     # Build and deploy charm from local source folder
     charm = await ops_test.build_charm(".")
-    resources = {"cos-registration-server": METADATA["resources"]["ubuntu22"]["upstream-source"]}
+    resources = {"ubuntu22": METADATA["resources"]["ubuntu22"]["upstream-source"]}
 
     # Deploy the charm and wait for active/idle status
     await asyncio.gather(
