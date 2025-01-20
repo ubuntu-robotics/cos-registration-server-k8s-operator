@@ -2,34 +2,25 @@
 
 """A kubernetes charm for registering devices."""
 
-import logging
-import string
-import secrets
 import hashlib
-import requests
 import json
-
+import logging
+import secrets
+import socket
+import string
 from os import path
 from pathlib import Path
 
-from ops.charm import (
-    ActionEvent,
-    CharmBase,
-    HookEvent,
-    RelationJoinedEvent,
-)
-
+import requests
+from charms.auth_devices_keys_k8s.v0.auth_devices_keys import AuthDevicesKeysProvider
+from charms.catalogue_k8s.v0.catalogue import CatalogueConsumer, CatalogueItem
+from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
+from charms.traefik_route_k8s.v0.traefik_route import TraefikRouteRequirer
+from ops.charm import ActionEvent, CharmBase, HookEvent, RelationJoinedEvent
 from ops.framework import StoredState
 from ops.main import main
 from ops.model import ActiveStatus, MaintenanceStatus, WaitingStatus
-from ops.pebble import Layer, ExecError, ChangeError
-
-
-from charms.traefik_route_k8s.v0.traefik_route import TraefikRouteRequirer
-from charms.catalogue_k8s.v0.catalogue import CatalogueConsumer, CatalogueItem
-from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
-from charms.auth_devices_keys_k8s.v0.auth_devices_keys import AuthDevicesKeysProvider
-import socket
+from ops.pebble import ChangeError, ExecError, Layer
 
 # Log messages can be retrieved using juju debug-log
 logger = logging.getLogger(__name__)

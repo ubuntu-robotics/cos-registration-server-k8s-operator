@@ -1,20 +1,20 @@
+import hashlib
+import tempfile
 import unittest
-from unittest.mock import patch, Mock
+from pathlib import Path
+from unittest.mock import Mock, patch
 
 import ops
 import ops.testing
+import yaml
+
 from charm import (
     CosRegistrationServerCharm,
-    md5_update_from_file,
-    md5_dir,
     md5_dict,
+    md5_dir,
     md5_list,
+    md5_update_from_file,
 )
-
-import yaml
-import hashlib
-import tempfile
-from pathlib import Path
 
 ops.testing.SIMULATE_CAN_CONNECT = True
 
@@ -29,7 +29,6 @@ k8s_resource_multipatch = patch.multiple(
 
 
 class TestCharm(unittest.TestCase):
-
     def setUp(self):
         self.harness = ops.testing.Harness(CosRegistrationServerCharm)
         self.addCleanup(self.harness.cleanup)
@@ -223,7 +222,7 @@ class TestCharm(unittest.TestCase):
             [{"uid": "my_dashboard", "dashboard": {"annotations": True, "dashboard": True}}],
         )
         mock_get.assert_called_once_with(
-            f"{self.harness.charm.internal_url}/api/v1/applications/grafana/dashboards"
+            f"{self.harness.charm.internal_url}/api/v1/applications/grafana/dashboards/"
         )
 
     @patch("requests.get")
@@ -234,7 +233,7 @@ class TestCharm(unittest.TestCase):
         self.harness.charm._stored.dashboard_dict_hash = ""
         self.harness.charm._update_grafana_dashboards()
         mock_get.assert_called_with(
-            f"{self.harness.charm.internal_url}/api/v1/applications/grafana/dashboards"
+            f"{self.harness.charm.internal_url}/api/v1/applications/grafana/dashboards/"
         )
         self.assertNotEqual(self.harness.charm._stored.dashboard_dict_hash, "")
 
@@ -244,7 +243,7 @@ class TestCharm(unittest.TestCase):
         ]
         self.harness.charm._update_grafana_dashboards()
         mock_get.assert_called_with(
-            f"{self.harness.charm.internal_url}/api/v1/applications/grafana/dashboards"
+            f"{self.harness.charm.internal_url}/api/v1/applications/grafana/dashboards/"
         )
         self.assertNotEqual(self.harness.charm._stored.dashboard_dict_hash, previous_hash)
 
@@ -256,7 +255,7 @@ class TestCharm(unittest.TestCase):
         self.harness.charm._stored.dashboard_dict_hash = ""
         self.harness.charm._update_grafana_dashboards()
         mock_get.assert_called_with(
-            f"{self.harness.charm.internal_url}/api/v1/applications/grafana/dashboards"
+            f"{self.harness.charm.internal_url}/api/v1/applications/grafana/dashboards/"
         )
         self.assertNotEqual(self.harness.charm._stored.dashboard_dict_hash, "")
         print(self.harness.charm._stored.dashboard_dict_hash)
@@ -267,13 +266,12 @@ class TestCharm(unittest.TestCase):
         self.harness.charm._update_grafana_dashboards()
         print(self.harness.charm._stored.dashboard_dict_hash)
         mock_get.assert_called_with(
-            f"{self.harness.charm.internal_url}/api/v1/applications/grafana/dashboards"
+            f"{self.harness.charm.internal_url}/api/v1/applications/grafana/dashboards/"
         )
         self.assertEqual(self.harness.charm._stored.dashboard_dict_hash, previous_hash)
 
 
 class TestMD5(unittest.TestCase):
-
     def create_file(self, name, content):
         with open(self.directory_path / Path(name), "w") as f:
             f.write(content)

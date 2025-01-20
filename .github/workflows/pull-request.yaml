@@ -1,0 +1,16 @@
+name: Pull Requests
+
+on:
+  pull_request:
+    paths-ignore:
+      - '.gitignore'
+      - 'LICENSE'
+      - '**.md'
+    branches:
+      - main
+
+jobs:
+  pull-request:
+    name: PR
+    uses: canonical/observability/.github/workflows/charm-pull-request.yaml@main
+    secrets: inherit
