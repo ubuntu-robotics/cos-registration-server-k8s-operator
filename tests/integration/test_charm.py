@@ -13,6 +13,7 @@ from pytest_operator.plugin import OpsTest
 logger = logging.getLogger(__name__)
 
 METADATA = yaml.safe_load(Path("./charmcraft.yaml").read_text())
+RESSOURCE_NAME = "cos-registration-server-image"
 APP_NAME = METADATA["name"]
 
 
@@ -24,7 +25,7 @@ async def test_build_and_deploy(ops_test: OpsTest):
     """
     # Build and deploy charm from local source folder
     charm = await ops_test.build_charm(".")
-    resources = {"ubuntu22": METADATA["resources"]["ubuntu22"]["upstream-source"]}
+    resources = {RESSOURCE_NAME: METADATA["resources"][RESSOURCE_NAME]["upstream-source"]}
 
     # Deploy the charm and wait for active/idle status
     await asyncio.gather(
