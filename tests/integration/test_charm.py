@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from charmed_kubeflow_chisme.testing import assert_logging
 from pytest_operator.plugin import OpsTest
 
 logger = logging.getLogger(__name__)
@@ -34,3 +35,9 @@ async def test_build_and_deploy(ops_test: OpsTest):
             apps=[APP_NAME], status="active", raise_on_blocked=True, timeout=1000
         ),
     )
+
+
+async def test_logging(self, ops_test: OpsTest):
+    """Test logging is defined in relation data bag."""
+    app = ops_test.model.applications[APP_NAME]
+    await assert_logging(app)
