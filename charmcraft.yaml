@@ -14,13 +14,13 @@ bases:
       channel: "22.04"
 containers:
   cos-registration-server:
-    resource: ubuntu22
+    resource: cos-registration-server-image
     mounts:
       - storage: database
         location: /server_data
 
 resources:
-  ubuntu22:
+  cos-registration-server-image:
     type: oci-image
     description: ubuntu 22 base image
     upstream-source: ghcr.io/canonical/cos-registration-server:dev
