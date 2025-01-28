@@ -8,7 +8,6 @@ import logging
 import secrets
 import socket
 import string
-from os import path
 from pathlib import Path
 
 import requests
