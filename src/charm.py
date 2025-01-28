@@ -79,10 +79,6 @@ class CosRegistrationServerCharm(CharmBase):
             # Storage isn't available yet. Since storage becomes available early enough, no need
             # to observe storage-attached and complicate things; simply abort until it is ready.
             return
-        self._server_data_mount_point = self.model.storages["database"][0].location
-        self._grafana_dashboards_path = path.join(
-            self._server_data_mount_point, "grafana_dashboards"
-        )
 
         self.container = self.unit.get_container(self.name)
         self._stored.set_default(
@@ -120,9 +116,7 @@ class CosRegistrationServerCharm(CharmBase):
             ),
         )
 
-        self.grafana_dashboard_provider = GrafanaDashboardProvider(
-            charm=self, dashboards_path=self._grafana_dashboards_path
-        )
+        self.grafana_dashboard_provider = GrafanaDashboardProvider(self)
 
         self.auth_devices_keys_provider = AuthDevicesKeysProvider(
             charm=self, relation_name="auth-devices-keys"
