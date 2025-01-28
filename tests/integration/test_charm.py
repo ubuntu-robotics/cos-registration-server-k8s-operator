@@ -8,8 +8,10 @@ from pathlib import Path
 import pytest
 import yaml
 from charmed_kubeflow_chisme.testing import (
+    assert_grafana_dashboards,
     assert_logging,
     deploy_and_assert_grafana_agent,
+    get_grafana_dashboards,
 )
 from pytest_operator.plugin import OpsTest
 
@@ -41,7 +43,7 @@ async def test_build_and_deploy(ops_test: OpsTest):
 
     # Deploying grafana-agent-k8s and add the logging relation
     await deploy_and_assert_grafana_agent(
-        ops_test.model, APP_NAME, metrics=False, dashboard=False, logging=True
+        ops_test.model, APP_NAME, metrics=False, dashboard=True, logging=True
     )
 
 
@@ -54,3 +56,11 @@ async def test_logging(ops_test: OpsTest):
     """Test logging is defined in relation data bag."""
     app = ops_test.model.applications[APP_NAME]
     await assert_logging(app)
+
+
+async def test_grafana_dashboards(ops_test: OpsTest):
+    """Test Grafana dashboards are defined in relation data bag."""
+    app = ops_test.model.applications[APP_NAME]
+    dashboards = get_grafana_dashboards()
+    logger.info("found dashboards: %s", dashboards)
+    await assert_grafana_dashboards(app, dashboards)
