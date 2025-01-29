@@ -35,6 +35,8 @@ requires:
     limit: 1
   catalogue:
     interface: catalogue
+  logging-devices-alerts:
+    interface: loki_push_api
 
 provides:
   grafana-dashboard:
@@ -45,3 +47,10 @@ provides:
 actions:
   get-admin-password:
     description: Get the admin password for the django admin view.
+
+parts:
+  charm:
+    build-snaps: [rustup]
+    override-build: |
+      rustup default stable
+      craftctl default

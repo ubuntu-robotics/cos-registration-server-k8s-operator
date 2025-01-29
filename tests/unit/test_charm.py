@@ -7,7 +7,6 @@ from unittest.mock import Mock, patch
 import ops
 import ops.testing
 import yaml
-
 from charm import (
     CosRegistrationServerCharm,
     md5_dict,
