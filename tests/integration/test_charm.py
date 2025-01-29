@@ -89,6 +89,6 @@ async def test_grafana_dashboards_devices(ops_test: OpsTest, mocker):
     logger.info("found dashboards: %s", dashboards)
     mocker.patch(
         "charmed_kubeflow_chisme.testing.cos_integration.APP_GRAFANA_DASHBOARD",
-        "grafana-dashboard-devices"
+        "grafana-dashboard-devices",
     )
     await assert_grafana_dashboards(app, dashboards)
