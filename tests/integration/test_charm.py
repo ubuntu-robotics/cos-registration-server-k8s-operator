@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 import yaml
 from charmed_kubeflow_chisme.testing import (
+    GRAFANA_AGENT_APP,
+    GRAFANA_AGENT_GRAFANA_DASHBOARD,
     assert_grafana_dashboards,
     assert_logging,
     deploy_and_assert_grafana_agent,
@@ -21,6 +23,8 @@ METADATA = yaml.safe_load(Path("./charmcraft.yaml").read_text())
 RESOURCE_NAME = "cos-registration-server-image"
 RESOURCE_PATH = METADATA["resources"][RESOURCE_NAME]["upstream-source"]
 APP_NAME = METADATA["name"]
+
+APP_GRAFANA_DASHBOARD_DEVICES = "grafana-dashboard-devices"
 
 
 @pytest.mark.abort_on_fail
@@ -45,6 +49,17 @@ async def test_build_and_deploy(ops_test: OpsTest):
     await deploy_and_assert_grafana_agent(
         ops_test.model, APP_NAME, metrics=False, dashboard=True, logging=True
     )
+    logger.info(
+        "Adding relation: %s:%s and %s:%s",
+        APP_NAME,
+        APP_GRAFANA_DASHBOARD_DEVICES,
+        GRAFANA_AGENT_APP,
+        GRAFANA_AGENT_GRAFANA_DASHBOARD,
+    )
+    await ops_test.model.integrate(
+        f"{APP_NAME}:{APP_GRAFANA_DASHBOARD_DEVICES}",
+        f"{GRAFANA_AGENT_APP}:{GRAFANA_AGENT_GRAFANA_DASHBOARD}",
+    )
 
 
 async def test_status(ops_test):
@@ -63,4 +78,17 @@ async def test_grafana_dashboards(ops_test: OpsTest):
     app = ops_test.model.applications[APP_NAME]
     dashboards = get_grafana_dashboards()
     logger.info("found dashboards: %s", dashboards)
+    await assert_grafana_dashboards(app, dashboards)
+
+
+async def test_grafana_dashboards_devices(ops_test: OpsTest, mocker):
+    """Test Grafana dashboards are defined in relation data bag."""
+    app = ops_test.model.applications[APP_NAME]
+    # @todo get dashboard 'from db'
+    dashboards = set()
+    logger.info("found dashboards: %s", dashboards)
+    mocker.patch(
+        "charmed_kubeflow_chisme.testing.cos_integration.APP_GRAFANA_DASHBOARD",
+        "grafana-dashboard-devices"
+    )
     await assert_grafana_dashboards(app, dashboards)

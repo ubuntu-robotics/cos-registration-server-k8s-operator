@@ -116,6 +116,11 @@ class CosRegistrationServerCharm(CharmBase):
         )
 
         self.grafana_dashboard_provider = GrafanaDashboardProvider(self)
+        self.grafana_dashboard_provider_devices = GrafanaDashboardProvider(
+            self,
+            relation_name="grafana-dashboard-devices",
+            dashboards_path="src/grafana_dashboards/devices",
+        )
 
         self.auth_devices_keys_provider = AuthDevicesKeysProvider(
             charm=self, relation_name="auth-devices-keys"
@@ -220,11 +225,11 @@ class CosRegistrationServerCharm(CharmBase):
             if md5 != self._stored.dashboard_dict_hash:
                 logger.info("Grafana dashboards dict hash changed, updating dashboards!")
                 self._stored.dashboard_dict_hash = md5
-                self.grafana_dashboard_provider.remove_non_builtin_dashboards()
+                self.grafana_dashboard_provider_devices.remove_non_builtin_dashboards()
                 for dashboard in grafana_dashboards:
                     # assign dashboard uid in the grafana dashboard format
                     dashboard["dashboard"]["uid"] = dashboard["uid"]
-                    self.grafana_dashboard_provider.add_dashboard(
+                    self.grafana_dashboard_provider_devices.add_dashboard(
                         json.dumps(dashboard["dashboard"]), inject_dropdowns=False
                     )
 
