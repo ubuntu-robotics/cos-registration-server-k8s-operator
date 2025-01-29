@@ -6,15 +6,18 @@ import hashlib
 import json
 import logging
 import secrets
+import shutil
 import socket
 import string
+from os import mkdir, path
 from pathlib import Path
 
 import requests
+import yaml
 from charms.auth_devices_keys_k8s.v0.auth_devices_keys import AuthDevicesKeysProvider
 from charms.catalogue_k8s.v0.catalogue import CatalogueConsumer, CatalogueItem
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
-from charms.loki_k8s.v1.loki_push_api import LogForwarder
+from charms.loki_k8s.v1.loki_push_api import LogForwarder, LokiPushApiConsumer
 from charms.traefik_route_k8s.v0.traefik_route import TraefikRouteRequirer
 from ops.charm import ActionEvent, CharmBase, HookEvent, RelationJoinedEvent
 from ops.framework import StoredState
@@ -81,7 +84,10 @@ class CosRegistrationServerCharm(CharmBase):
 
         self.container = self.unit.get_container(self.name)
         self._stored.set_default(
-            admin_password="", dashboard_dict_hash="", auth_devices_keys_hash=""
+            admin_password="",
+            dashboard_dict_hash="",
+            auth_devices_keys_hash="",
+            loki_alert_rules_hash="",
         )
         self.ingress = TraefikRouteRequirer(self, self.model.get_relation("ingress"), "ingress")  # type: ignore
         self.framework.observe(self.on["ingress"].relation_joined, self._configure_ingress)
@@ -127,6 +133,14 @@ class CosRegistrationServerCharm(CharmBase):
         )
 
         self.log_forwarder = LogForwarder(self)
+
+        self.loki_device_alert_rules_path = "./loki_alert_rules"
+        self.loki_device_alerts_push_api_consumer = LokiPushApiConsumer(
+            charm=self,
+            relation_name="logging-devices-alerts",
+            alert_rules_path=self.loki_device_alert_rules_path,
+        )
+
 
     def _on_ingress_ready(self, _) -> None:
         """Once Traefik tells us our external URL, make sure we reconfigure the charm."""
@@ -204,6 +218,7 @@ class CosRegistrationServerCharm(CharmBase):
             return
         self._update_grafana_dashboards()
         self._update_auth_devices_keys()
+        self._update_loki_alert_rules()
 
     def _get_grafana_dashboards_from_db(self):
         database_url = (
@@ -242,6 +257,38 @@ class CosRegistrationServerCharm(CharmBase):
                 self.auth_devices_keys_provider.update_all_auth_devices_keys_from_db(
                     auth_devices_keys
                 )
+
+    def _get_alert_rules_from_db(self, application: str):
+        database_url = (
+            self.external_url
+            + COS_REGISTRATION_SERVER_API_URL_BASE
+            + f"applications/{application}/alert_rules/"
+        )
+        try:
+            response = requests.get(database_url)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to fetch {application} alert rules from '{database_url}': {e}")
+            return None
+
+    def _write_alert_rules_to_dir(self, path: str, alert_rules):
+        shutil.rmtree(path, ignore_errors=True)
+        mkdir(path)
+        for rules_file in alert_rules:
+            with open(f"{path}/{rules_file['uid']}.rule", "w") as f:
+                f.write(yaml.dump(rules_file["rules"]))
+
+    def _update_loki_alert_rules(self) -> None:
+        if loki_alert_rules := self._get_alert_rules_from_db(application="loki"):
+            md5_keys_list_hash = md5_list(loki_alert_rules)
+            if md5_keys_list_hash != self._stored.loki_alert_rules_hash:
+                logger.info("Loki alert rules hash has changed, updating them!")
+                self._stored.loki_alert_rules_hash = md5_keys_list_hash
+                self._write_alert_rules_to_dir(
+                    path=self.loki_device_alert_rules_path, alert_rules=loki_alert_rules
+                )
+                self.loki_device_alerts_push_api_consumer._reinitialize_alert_rules()
 
     def _update_layer_and_restart(self, event) -> None:
         """Define and start a workload using the Pebble API."""

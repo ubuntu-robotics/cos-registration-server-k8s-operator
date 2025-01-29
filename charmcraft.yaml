@@ -39,6 +39,8 @@ requires:
   logging:
    interface: loki_push_api
    optional: true
+  logging-devices-alerts:
+    interface: loki_push_api
 
 provides:
   grafana-dashboard:

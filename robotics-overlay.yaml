@@ -35,4 +35,5 @@ relations:
   - [ros2bag-fileserver:catalogue, catalogue:catalogue]
   - [cos-registration-server:ingress, traefik:traefik-route]
   - [cos-registration-server:catalogue, catalogue:catalogue]
+  - [cos-registration-server:logging-device-alerts, loki:logging]
   - [grafana:grafana-dashboard, cos-registration-server:grafana-dashboard]
