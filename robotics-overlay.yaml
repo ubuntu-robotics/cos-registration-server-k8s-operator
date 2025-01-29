@@ -36,4 +36,5 @@ relations:
   - [cos-registration-server:ingress, traefik:traefik-route]
   - [cos-registration-server:catalogue, catalogue:catalogue]
   - [cos-registration-server:logging-device-alerts, loki:logging]
+  - [cos-registration-server:send-remote-write-devices-alerts, prometheus:receive-remote-write]
   - [grafana:grafana-dashboard, cos-registration-server:grafana-dashboard]

@@ -18,6 +18,7 @@ from charms.auth_devices_keys_k8s.v0.auth_devices_keys import AuthDevicesKeysPro
 from charms.catalogue_k8s.v0.catalogue import CatalogueConsumer, CatalogueItem
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.loki_k8s.v1.loki_push_api import LokiPushApiConsumer
+from charms.prometheus_k8s.v1.prometheus_remote_write import PrometheusRemoteWriteConsumer
 from charms.traefik_route_k8s.v0.traefik_route import TraefikRouteRequirer
 from ops.charm import ActionEvent, CharmBase, HookEvent, RelationJoinedEvent
 from ops.framework import StoredState
@@ -92,6 +93,7 @@ class CosRegistrationServerCharm(CharmBase):
             dashboard_dict_hash="",
             auth_devices_keys_hash="",
             loki_alert_rules_hash="",
+            prometheus_alert_rules_hash="",
         )
         self.ingress = TraefikRouteRequirer(self, self.model.get_relation("ingress"), "ingress")  # type: ignore
         self.framework.observe(self.on["ingress"].relation_joined, self._configure_ingress)
@@ -138,6 +140,13 @@ class CosRegistrationServerCharm(CharmBase):
             charm=self,
             relation_name="logging-devices-alerts",
             alert_rules_path=self.loki_device_alert_rules_path,
+        )
+
+        self.prometheus_device_alert_rules_path = "./prometheus_alert_rules"
+        self.prometheus_device_alerts_remote_write_consumer = PrometheusRemoteWriteConsumer(
+            charm=self,
+            relation_name="send-remote-write-devices-alerts",
+            alert_rules_path=self.prometheus_device_alert_rules_path,
         )
 
     def _on_ingress_ready(self, _) -> None:
@@ -217,6 +226,7 @@ class CosRegistrationServerCharm(CharmBase):
         self._update_grafana_dashboards()
         self._update_auth_devices_keys()
         self._update_loki_alert_rules()
+        self._update_prometheus_alert_rules()
 
     def _get_grafana_dashboards_from_db(self):
         database_url = (
@@ -287,6 +297,18 @@ class CosRegistrationServerCharm(CharmBase):
                     path=self.loki_device_alert_rules_path, alert_rules=loki_alert_rules
                 )
                 self.loki_device_alerts_push_api_consumer._reinitialize_alert_rules()
+
+    def _update_prometheus_alert_rules(self) -> None:
+        if prometheus_alert_rules := self._get_alert_rules_from_db(application="prometheus"):
+            md5_keys_list_hash = md5_list(prometheus_alert_rules)
+            if md5_keys_list_hash != self._stored.prometheus_alert_rules_hash:
+                logger.info("Prometheus alert rules hash has changed, updating them!")
+                self._stored.prometheus_alert_rules_hash = md5_keys_list_hash
+                self._write_alert_rules_to_dir(
+                    path=self.prometheus_device_alert_rules_path,
+                    alert_rules=prometheus_alert_rules,
+                )
+                self.prometheus_device_alerts_remote_write_consumer.reload_alerts()
 
     def _update_layer_and_restart(self, event) -> None:
         """Define and start a workload using the Pebble API."""
