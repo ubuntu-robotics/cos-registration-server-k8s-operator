@@ -41,6 +41,8 @@ requires:
    optional: true
   logging-devices-alerts:
     interface: loki_push_api
+  send-remote-write-devices-alerts:
+    interface: prometheus_remote_write
 
 provides:
   grafana-dashboard:
