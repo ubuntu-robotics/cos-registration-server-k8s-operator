@@ -13,7 +13,6 @@ from os import mkdir, path
 from pathlib import Path
 
 import requests
-import yaml
 from charms.auth_devices_keys_k8s.v0.auth_devices_keys import AuthDevicesKeysProvider
 from charms.catalogue_k8s.v0.catalogue import CatalogueConsumer, CatalogueItem
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
@@ -286,7 +285,7 @@ class CosRegistrationServerCharm(CharmBase):
         mkdir(path)
         for rules_file in alert_rules:
             with open(f"{path}/{rules_file['uid']}.rule", "w") as f:
-                f.write(yaml.dump(rules_file["rules"]))
+                f.write(rules_file["rules"])
 
     def _update_loki_alert_rules(self) -> None:
         if loki_alert_rules := self._get_alert_rules_from_db(application="loki"):
