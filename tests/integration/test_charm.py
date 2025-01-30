@@ -15,6 +15,10 @@ from charmed_kubeflow_chisme.testing import (
     deploy_and_assert_grafana_agent,
     get_grafana_dashboards,
 )
+from charmed_kubeflow_chisme.testing.cos_integration import (
+    PROVIDES,
+    _get_unit_relation_data,
+)
 from pytest_operator.plugin import OpsTest
 
 logger = logging.getLogger(__name__)
@@ -61,6 +65,18 @@ async def test_build_and_deploy(ops_test: OpsTest):
         f"{GRAFANA_AGENT_APP}:{GRAFANA_AGENT_GRAFANA_DASHBOARD}",
     )
 
+    logger.info(
+        "Adding relation: %s:%s and %s:%s",
+        APP_NAME,
+        "tracing",
+        GRAFANA_AGENT_APP,
+        "tracing-provider",
+    )
+    await ops_test.model.integrate(
+        f"{APP_NAME}:tracing",
+        f"{GRAFANA_AGENT_APP}:tracing-provider",
+    )
+
 
 async def test_status(ops_test):
     """Assert on the unit status."""
@@ -92,3 +108,12 @@ async def test_grafana_dashboards_devices(ops_test: OpsTest, mocker):
         "grafana-dashboard-devices",
     )
     await assert_grafana_dashboards(app, dashboards)
+
+
+async def test_tracing(ops_test: OpsTest):
+    """Test logging is defined in relation data bag."""
+    app = ops_test.model.applications[APP_NAME]
+
+    unit_relation_data = await _get_unit_relation_data(app, "tracing", side=PROVIDES)
+
+    assert unit_relation_data
