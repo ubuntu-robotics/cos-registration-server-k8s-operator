@@ -126,7 +126,7 @@ class CosRegistrationServerCharm(CharmBase):
             charm=self, relation_name="auth-devices-keys"
         )
 
-        self.loki_push = LogForwarder(self, relation_name="logging")
+        self.log_forwarder = LogForwarder(self)
 
     def _on_ingress_ready(self, _) -> None:
         """Once Traefik tells us our external URL, make sure we reconfigure the charm."""
