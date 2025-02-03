@@ -6,7 +6,8 @@ The [COS registration server](https://github.com/canonical/cos-registration-serv
 
 The charm is still under development and is not available yet on CharmHub.
 
-The deployment assumes that a Juju model is deployed with microk8s. Instructions on how to set up microk8s with Juju are available [here](https://juju.is/docs/sdk/set-up-your-development-environment#heading--install-microk8s).
+The deployment assumes that a Juju model is deployed with microk8s.
+Instructions on how to set up microk8s with Juju are available [here](https://juju.is/docs/sdk/set-up-your-development-environment#heading--install-microk8s).
 
 To deploy the local charm follow these instructions:
 
