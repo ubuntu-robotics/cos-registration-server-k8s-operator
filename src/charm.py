@@ -8,13 +8,13 @@ import logging
 import secrets
 import socket
 import string
-from os import path
 from pathlib import Path
 
 import requests
 from charms.auth_devices_keys_k8s.v0.auth_devices_keys import AuthDevicesKeysProvider
 from charms.catalogue_k8s.v0.catalogue import CatalogueConsumer, CatalogueItem
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
+from charms.loki_k8s.v1.loki_push_api import LogForwarder
 from charms.traefik_route_k8s.v0.traefik_route import TraefikRouteRequirer
 from ops.charm import ActionEvent, CharmBase, HookEvent, RelationJoinedEvent
 from ops.framework import StoredState
@@ -78,10 +78,6 @@ class CosRegistrationServerCharm(CharmBase):
             # Storage isn't available yet. Since storage becomes available early enough, no need
             # to observe storage-attached and complicate things; simply abort until it is ready.
             return
-        self._server_data_mount_point = self.model.storages["database"][0].location
-        self._grafana_dashboards_path = path.join(
-            self._server_data_mount_point, "grafana_dashboards"
-        )
 
         self.container = self.unit.get_container(self.name)
         self._stored.set_default(
@@ -119,13 +115,18 @@ class CosRegistrationServerCharm(CharmBase):
             ),
         )
 
-        self.grafana_dashboard_provider = GrafanaDashboardProvider(
-            charm=self, dashboards_path=self._grafana_dashboards_path
+        self.grafana_dashboard_provider = GrafanaDashboardProvider(self)
+        self.grafana_dashboard_provider_devices = GrafanaDashboardProvider(
+            self,
+            relation_name="grafana-dashboard-devices",
+            dashboards_path="src/grafana_dashboards/devices",
         )
 
         self.auth_devices_keys_provider = AuthDevicesKeysProvider(
             charm=self, relation_name="auth-devices-keys"
         )
+
+        self.log_forwarder = LogForwarder(self)
 
     def _on_ingress_ready(self, _) -> None:
         """Once Traefik tells us our external URL, make sure we reconfigure the charm."""
@@ -224,11 +225,11 @@ class CosRegistrationServerCharm(CharmBase):
             if md5 != self._stored.dashboard_dict_hash:
                 logger.info("Grafana dashboards dict hash changed, updating dashboards!")
                 self._stored.dashboard_dict_hash = md5
-                self.grafana_dashboard_provider.remove_non_builtin_dashboards()
+                self.grafana_dashboard_provider_devices.remove_non_builtin_dashboards()
                 for dashboard in grafana_dashboards:
                     # assign dashboard uid in the grafana dashboard format
                     dashboard["dashboard"]["uid"] = dashboard["uid"]
-                    self.grafana_dashboard_provider.add_dashboard(
+                    self.grafana_dashboard_provider_devices.add_dashboard(
                         json.dumps(dashboard["dashboard"]), inject_dropdowns=False
                     )
 
