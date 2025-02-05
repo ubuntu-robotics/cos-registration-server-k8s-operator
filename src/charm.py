@@ -19,9 +19,9 @@ from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.loki_k8s.v1.loki_push_api import LogForwarder, LokiPushApiConsumer
 from charms.prometheus_k8s.v1.prometheus_remote_write import PrometheusRemoteWriteConsumer
 from charms.traefik_route_k8s.v0.traefik_route import TraefikRouteRequirer
+from ops import main
 from ops.charm import ActionEvent, CharmBase, HookEvent, RelationJoinedEvent
 from ops.framework import StoredState
-from ops import main
 from ops.model import ActiveStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import ChangeError, ExecError, Layer
 
@@ -142,7 +142,7 @@ class CosRegistrationServerCharm(CharmBase):
             alert_rules_path=self.loki_device_alert_rules_path,
             # The alerts we are sending are not specific to
             # cos-registration-server but to devices outside of juju
-            skip_alert_topology_labeling=True
+            skip_alert_topology_labeling=True,
         )
 
         self.prometheus_device_alert_rules_path = "./prometheus_alert_rules"
@@ -290,7 +290,7 @@ class CosRegistrationServerCharm(CharmBase):
         shutil.rmtree(path, ignore_errors=True)
         mkdir(path)
         for rules_file in alert_rules:
-            rule_file_name = rules_file['uid'].replace('/', '_')
+            rule_file_name = rules_file["uid"].replace("/", "_")
             with open(f"{path}/{rule_file_name}.rule", "w") as f:
                 f.write(rules_file["rules"])
 
