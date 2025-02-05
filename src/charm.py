@@ -21,7 +21,7 @@ from charms.prometheus_k8s.v1.prometheus_remote_write import PrometheusRemoteWri
 from charms.traefik_route_k8s.v0.traefik_route import TraefikRouteRequirer
 from ops.charm import ActionEvent, CharmBase, HookEvent, RelationJoinedEvent
 from ops.framework import StoredState
-from ops.main import main
+from ops import main
 from ops.model import ActiveStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import ChangeError, ExecError, Layer
 
