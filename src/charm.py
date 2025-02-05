@@ -139,6 +139,9 @@ class CosRegistrationServerCharm(CharmBase):
             charm=self,
             relation_name="logging-devices-alerts",
             alert_rules_path=self.loki_device_alert_rules_path,
+            # The alerts we are sending are not specific to
+            # cos-registration-server but to devices outside of juju
+            skip_alert_topology_labeling=True
         )
 
         self.prometheus_device_alert_rules_path = "./prometheus_alert_rules"
@@ -147,6 +150,9 @@ class CosRegistrationServerCharm(CharmBase):
             relation_name="send-remote-write-devices-alerts",
             alert_rules_path=self.prometheus_device_alert_rules_path,
         )
+        # hack because PrometheusRemoteWriteConsumer doesn't
+        # have the option to skip topology injection
+        self.prometheus_device_alerts_remote_write_consumer.topology = None
 
     def _on_ingress_ready(self, _) -> None:
         """Once Traefik tells us our external URL, make sure we reconfigure the charm."""
