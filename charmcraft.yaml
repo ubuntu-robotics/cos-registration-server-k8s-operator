@@ -62,3 +62,11 @@ parts:
     override-build: |
       rustup default stable
       craftctl default
+  cos-tool:
+    plugin: dump
+    source: .
+    build-packages:
+      - curl
+    override-pull: |
+      curl -L -O https://github.com/canonical/cos-tool/releases/latest/download/cos-tool-${CRAFT_ARCH_BUILD_FOR}
+      chmod 775 cos-tool-*
