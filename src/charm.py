@@ -290,7 +290,8 @@ class CosRegistrationServerCharm(CharmBase):
         shutil.rmtree(path, ignore_errors=True)
         mkdir(path)
         for rules_file in alert_rules:
-            with open(f"{path}/{rules_file['uid']}.rule", "w") as f:
+            rule_file_name = rules_file['uid'].replace('/', '_')
+            with open(f"{path}/{rule_file_name}.rule", "w") as f:
                 f.write(rules_file["rules"])
 
     def _update_loki_alert_rules(self) -> None:
