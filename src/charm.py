@@ -9,7 +9,7 @@ import secrets
 import shutil
 import socket
 import string
-from os import mkdir, path
+from os import mkdir
 from pathlib import Path
 
 import requests
