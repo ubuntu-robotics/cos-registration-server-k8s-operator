@@ -236,7 +236,7 @@ class TestCharm(unittest.TestCase):
         )
         self.assertNotEqual(self.harness.charm._stored.dashboard_dict_hash, "")
 
-        previous_hash = self.harness.charm._stored.auth_devices_keys_hash
+        previous_hash = self.harness.charm._stored.dashboard_dict_hash
         mock_get.return_value.json.return_value = [
             {"uid": "my_dashboard2", "dashboard": {"annotations": True, "dashboard": True}}
         ]
@@ -263,7 +263,6 @@ class TestCharm(unittest.TestCase):
             {"uid": "my_dashboard", "dashboard": {"annotations": True, "dashboard": True}}
         ]
         self.harness.charm._update_grafana_dashboards()
-        print(self.harness.charm._stored.dashboard_dict_hash)
         mock_get.assert_called_with(
             f"{self.harness.charm.internal_url}/api/v1/applications/grafana/dashboards/"
         )
