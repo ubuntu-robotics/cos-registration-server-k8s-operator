@@ -19,7 +19,8 @@ from charms.catalogue_k8s.v0.catalogue import CatalogueConsumer, CatalogueItem
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.loki_k8s.v1.loki_push_api import LogForwarder, LokiPushApiConsumer
 from charms.prometheus_k8s.v1.prometheus_remote_write import PrometheusRemoteWriteConsumer
-from charms.tempo_coordinator_k8s.v0.charm_tracing import trace_charm
+
+# from charms.tempo_coordinator_k8s.v0.charm_tracing import trace_charm
 from charms.tempo_coordinator_k8s.v0.tracing import TracingEndpointRequirer
 from charms.traefik_route_k8s.v0.traefik_route import TraefikRouteRequirer
 from ops import main
@@ -71,16 +72,16 @@ def md5_list(lst):
     return hash_value
 
 
-@trace_charm(
-    tracing_endpoint="tracing_endpoint",
-    extra_types=(
-        AuthDevicesKeysProvider,
-        CatalogueConsumer,
-        GrafanaDashboardProvider,
-        LogForwarder,
-        TraefikRouteRequirer,
-    ),
-)
+# @trace_charm(
+#     tracing_endpoint="tracing_endpoint",
+#     extra_types=(
+#         AuthDevicesKeysProvider,
+#         CatalogueConsumer,
+#         GrafanaDashboardProvider,
+#         LogForwarder,
+#         TraefikRouteRequirer,
+#     ),
+# )
 class CosRegistrationServerCharm(CharmBase):
     """Charm to run a COS registration server on Kubernetes."""
 
