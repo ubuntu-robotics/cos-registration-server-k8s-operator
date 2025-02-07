@@ -10,9 +10,12 @@ import yaml
 from charmed_kubeflow_chisme.testing import (
     GRAFANA_AGENT_APP,
     GRAFANA_AGENT_GRAFANA_DASHBOARD,
+    GRAFANA_AGENT_LOGGING_PROVIDER,
+    assert_alert_rules,
     assert_grafana_dashboards,
     assert_logging,
     deploy_and_assert_grafana_agent,
+    get_alert_rules,
     get_grafana_dashboards,
 )
 from pytest_operator.plugin import OpsTest
@@ -25,6 +28,10 @@ RESOURCE_PATH = METADATA["resources"][RESOURCE_NAME]["upstream-source"]
 APP_NAME = METADATA["name"]
 
 APP_GRAFANA_DASHBOARD_DEVICES = "grafana-dashboard-devices"
+
+APP_LOKI_ALERT_RULE_FILES_DEVICES = "logging-devices-alerts"
+
+LOKI_ALERT_RULES_DIRECTORY = Path("./src/loki_alert_rules")
 
 
 @pytest.mark.abort_on_fail
@@ -60,6 +67,17 @@ async def test_build_and_deploy(ops_test: OpsTest):
         f"{APP_NAME}:{APP_GRAFANA_DASHBOARD_DEVICES}",
         f"{GRAFANA_AGENT_APP}:{GRAFANA_AGENT_GRAFANA_DASHBOARD}",
     )
+    logger.info(
+        "Adding relation: %s:%s and %s:%s",
+        APP_NAME,
+        APP_LOKI_ALERT_RULE_FILES_DEVICES,
+        GRAFANA_AGENT_APP,
+        GRAFANA_AGENT_LOGGING_PROVIDER,
+    )
+    await ops_test.model.integrate(
+        f"{APP_NAME}:{APP_LOKI_ALERT_RULE_FILES_DEVICES}",
+        f"{GRAFANA_AGENT_APP}:{GRAFANA_AGENT_LOGGING_PROVIDER}",
+    )
 
 
 async def test_status(ops_test):
@@ -92,3 +110,27 @@ async def test_grafana_dashboards_devices(ops_test: OpsTest, mocker):
         "grafana-dashboard-devices",
     )
     await assert_grafana_dashboards(app, dashboards)
+
+
+async def test_loki_alert_rules(ops_test: OpsTest, mocker):
+    """Test Loki alert rules are defined in relation data bag."""
+    app = ops_test.model.applications[APP_NAME]
+    alert_rules = get_alert_rules(LOKI_ALERT_RULES_DIRECTORY)
+    logger.info("found alert rules: %s", alert_rules)
+    mocker.patch(
+        "charmed_kubeflow_chisme.testing.cos_integration.APP_METRICS_ENDPOINT",
+        GRAFANA_AGENT_LOGGING_PROVIDER,
+    )
+    await assert_alert_rules(app, alert_rules)
+
+
+async def test_loki_alert_rules_devices(ops_test: OpsTest, mocker):
+    """Test Loki alert rules for devices are defined in relation data bag."""
+    app = ops_test.model.applications[APP_NAME]
+    alert_rules = get_alert_rules(LOKI_ALERT_RULES_DIRECTORY)
+    logger.info("found alert rules: %s", alert_rules)
+    mocker.patch(
+        "charmed_kubeflow_chisme.testing.cos_integration.APP_METRICS_ENDPOINT",
+        APP_LOKI_ALERT_RULE_FILES_DEVICES,
+    )
+    await assert_alert_rules(app, alert_rules)
