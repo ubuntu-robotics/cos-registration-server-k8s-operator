@@ -151,6 +151,7 @@ async def test_loki_alert_rules_devices(ops_test: OpsTest, mocker):
     )
     await assert_alert_rules(app, alert_rules)
 
+
 async def test_tracing(ops_test: OpsTest):
     """Test logging is defined in relation data bag."""
     app = ops_test.model.applications[APP_NAME]
