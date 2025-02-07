@@ -11,6 +11,7 @@ import socket
 import string
 from os import mkdir
 from pathlib import Path
+from typing import Optional
 
 import requests
 from charms.auth_devices_keys_k8s.v0.auth_devices_keys import AuthDevicesKeysProvider
@@ -18,6 +19,8 @@ from charms.catalogue_k8s.v0.catalogue import CatalogueConsumer, CatalogueItem
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.loki_k8s.v1.loki_push_api import LogForwarder, LokiPushApiConsumer
 from charms.prometheus_k8s.v1.prometheus_remote_write import PrometheusRemoteWriteConsumer
+from charms.tempo_coordinator_k8s.v0.charm_tracing import trace_charm
+from charms.tempo_coordinator_k8s.v0.tracing import TracingEndpointRequirer
 from charms.traefik_route_k8s.v0.traefik_route import TraefikRouteRequirer
 from ops import main
 from ops.charm import ActionEvent, CharmBase, HookEvent, RelationJoinedEvent
@@ -68,6 +71,16 @@ def md5_list(lst):
     return hash_value
 
 
+@trace_charm(
+    tracing_endpoint="tracing_endpoint",
+    extra_types=(
+        AuthDevicesKeysProvider,
+        CatalogueConsumer,
+        GrafanaDashboardProvider,
+        LogForwarder,
+        TraefikRouteRequirer,
+    ),
+)
 class CosRegistrationServerCharm(CharmBase):
     """Charm to run a COS registration server on Kubernetes."""
 
@@ -154,6 +167,8 @@ class CosRegistrationServerCharm(CharmBase):
         # hack because PrometheusRemoteWriteConsumer doesn't
         # have the option to skip topology injection
         self.prometheus_device_alerts_remote_write_consumer.topology = None
+
+        self.tracing_endpoint_requirer = TracingEndpointRequirer(self)
 
     def _on_ingress_ready(self, _) -> None:
         """Once Traefik tells us our external URL, make sure we reconfigure the charm."""
@@ -435,6 +450,15 @@ class CosRegistrationServerCharm(CharmBase):
             }
         )
         return pebble_layer
+
+    @property
+    def tracing_endpoint(self) -> Optional[str]:
+        """Tempo endpoint for charm tracing."""
+        endpoint = None
+        if self.tracing_endpoint_requirer.is_ready():
+            endpoint = self.tracing_endpoint_requirer.get_endpoint("otlp_http")
+
+        return endpoint
 
 
 if __name__ == "__main__":  # pragma: nocover

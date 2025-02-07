@@ -43,6 +43,12 @@ requires:
     interface: loki_push_api
   send-remote-write-devices-alerts:
     interface: prometheus_remote_write
+  tracing:
+    interface: tracing
+    limit: 1
+    optional: true
+    description: |
+      Integration to send charm traces to a tracing backend.
 
 provides:
   grafana-dashboard:
