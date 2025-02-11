@@ -2,37 +2,30 @@
 
 """A kubernetes charm for registering devices."""
 
-import logging
-import string
-import secrets
 import hashlib
-import requests
 import json
-
-from os import path
+import logging
+import secrets
+import socket
+import string
 from pathlib import Path
+from typing import Optional
+import socket
+import requests
 
-from ops.charm import (
-    ActionEvent,
-    CharmBase,
-    HookEvent,
-    RelationJoinedEvent,
-    CollectStatusEvent,
-)
-
-from ops.framework import StoredState
-from ops.main import main
-from ops.model import ActiveStatus, MaintenanceStatus, WaitingStatus, BlockedStatus
-from ops.pebble import Layer, ExecError, ChangeError
-
-
-from charms.traefik_route_k8s.v0.traefik_route import TraefikRouteRequirer
+from charms.auth_devices_keys_k8s.v0.auth_devices_keys import AuthDevicesKeysProvider
 from charms.catalogue_k8s.v0.catalogue import CatalogueConsumer, CatalogueItem
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
-from charms.auth_devices_keys_k8s.v0.auth_devices_keys import AuthDevicesKeysProvider
-from charms.blackbox_k8s.v0.blackbox_probes import BlackboxProbesProvider
-
-import socket
+from charms.loki_k8s.v1.loki_push_api import LogForwarder
+from charms.tempo_coordinator_k8s.v0.charm_tracing import trace_charm
+from charms.tempo_coordinator_k8s.v0.tracing import TracingEndpointRequirer
+from charms.traefik_route_k8s.v0.traefik_route import TraefikRouteRequirer
+from charms.blackbox_exporter_k8s.v0.blackbox_probes import BlackboxProbesProvider
+from ops.charm import ActionEvent, CharmBase, HookEvent, RelationJoinedEvent, CollectStatusEvent
+from ops.framework import StoredState
+from ops.main import main
+from ops.model import ActiveStatus, MaintenanceStatus, WaitingStatus
+from ops.pebble import ChangeError, ExecError, Layer
 
 # Log messages can be retrieved using juju debug-log
 logger = logging.getLogger(__name__)
@@ -77,6 +70,16 @@ def md5_list(lst):
     return hash_value
 
 
+@trace_charm(
+    tracing_endpoint="tracing_endpoint",
+    extra_types=(
+        AuthDevicesKeysProvider,
+        CatalogueConsumer,
+        GrafanaDashboardProvider,
+        LogForwarder,
+        TraefikRouteRequirer,
+    ),
+)
 class CosRegistrationServerCharm(CharmBase):
     """Charm to run a COS registration server on Kubernetes."""
 
@@ -90,10 +93,6 @@ class CosRegistrationServerCharm(CharmBase):
             # Storage isn't available yet. Since storage becomes available early enough, no need
             # to observe storage-attached and complicate things; simply abort until it is ready.
             return
-        self._server_data_mount_point = self.model.storages["database"][0].location
-        self._grafana_dashboards_path = path.join(
-            self._server_data_mount_point, "grafana_dashboards"
-        )
 
         self.container = self.unit.get_container(self.name)
         self._stored.set_default(
@@ -132,8 +131,11 @@ class CosRegistrationServerCharm(CharmBase):
             ),
         )
 
-        self.grafana_dashboard_provider = GrafanaDashboardProvider(
-            charm=self, dashboards_path=self._grafana_dashboards_path
+        self.grafana_dashboard_provider = GrafanaDashboardProvider(self)
+        self.grafana_dashboard_provider_devices = GrafanaDashboardProvider(
+            self,
+            relation_name="grafana-dashboard-devices",
+            dashboards_path="src/grafana_dashboards/devices",
         )
 
         self.auth_devices_keys_provider = AuthDevicesKeysProvider(
@@ -149,6 +151,10 @@ class CosRegistrationServerCharm(CharmBase):
                 self.on.config_changed,
             ],
         )
+
+        self.log_forwarder = LogForwarder(self)
+
+        self.tracing_endpoint_requirer = TracingEndpointRequirer(self)
 
     def _on_ingress_ready(self, _) -> None:
         """Once Traefik tells us our external URL, make sure we reconfigure the charm."""
@@ -247,11 +253,11 @@ class CosRegistrationServerCharm(CharmBase):
             if md5 != self._stored.dashboard_dict_hash:
                 logger.info("Grafana dashboards dict hash changed, updating dashboards!")
                 self._stored.dashboard_dict_hash = md5
-                self.grafana_dashboard_provider.remove_non_builtin_dashboards()
+                self.grafana_dashboard_provider_devices.remove_non_builtin_dashboards()
                 for dashboard in grafana_dashboards:
                     # assign dashboard uid in the grafana dashboard format
                     dashboard["dashboard"]["uid"] = dashboard["uid"]
-                    self.grafana_dashboard_provider.add_dashboard(
+                    self.grafana_dashboard_provider_devices.add_dashboard(
                         json.dumps(dashboard["dashboard"]), inject_dropdowns=False
                     )
 
@@ -441,6 +447,14 @@ class CosRegistrationServerCharm(CharmBase):
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to fetch devices ip from '{database_url}': {e}")
             return []
+
+    def tracing_endpoint(self) -> Optional[str]:
+        """Tempo endpoint for charm tracing."""
+        endpoint = None
+        if self.tracing_endpoint_requirer.is_ready():
+            endpoint = self.tracing_endpoint_requirer.get_endpoint("otlp_http")
+
+        return endpoint
 
 
 if __name__ == "__main__":  # pragma: nocover

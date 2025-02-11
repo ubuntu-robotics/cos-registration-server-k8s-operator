@@ -22,7 +22,7 @@ applications:
     charm: ./cos-registration-server_ubuntu-22.04-amd64.charm
     series: jammy
     resources:
-      ubuntu22: ghcr.io/ubuntu-robotics/cos-registration-server:dev
+      cos-registration-server-image: ghcr.io/canonical/cos-registration-server:dev
     scale: 1
     constraints: arch=amd64
     storage:

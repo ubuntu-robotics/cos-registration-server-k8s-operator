@@ -5,6 +5,7 @@ description: |
 type: charm
 assumes:
   - k8s-api
+  - juju >= 3.4.3
 bases:
   - build-on:
     - name: ubuntu
@@ -15,16 +16,16 @@ bases:
 
 containers:
   cos-registration-server:
-    resource: ubuntu22
+    resource: cos-registration-server-image
     mounts:
       - storage: database
         location: /server_data
 
 resources:
-  ubuntu22:
+  cos-registration-server-image:
     type: oci-image
     description: ubuntu 22 base image
-    upstream-source: ghcr.io/ubuntu-robotics/cos-registration-server:dev
+    upstream-source: ghcr.io/canonical/cos-registration-server:dev
 
 storage:
   database:
@@ -36,9 +37,20 @@ requires:
     limit: 1
   catalogue:
     interface: catalogue
+  logging:
+   interface: loki_push_api
+   optional: true
+  tracing:
+    interface: tracing
+    limit: 1
+    optional: true
+    description: |
+      Integration to send charm traces to a tracing backend.
 
 provides:
   grafana-dashboard:
+    interface: grafana_dashboard
+  grafana-dashboard-devices:
     interface: grafana_dashboard
   auth-devices-keys:
     interface: auth_devices_keys
@@ -48,3 +60,14 @@ provides:
 actions:
   get-admin-password:
     description: Get the admin password for the django admin view.
+
+charm-libs: 
+  - lib: blackbox_exporter_k8s.blackbox_probes
+    version: "0"
+
+parts:
+  charm:
+    build-snaps: [rustup]
+    override-build: |
+      rustup default stable
+      craftctl default

@@ -1,4 +1,8 @@
 ops ~= 2.4
 requests
-
+# blackbox_exporter_k8s/v0/blackbox_probes.py
 cosl
+pyyaml
+pydantic-core
+# tempo_coordinator_k8s/v0/charm_tracing.py
+opentelemetry-exporter-otlp-proto-http >= 1.21.0
