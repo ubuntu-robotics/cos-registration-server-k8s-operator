@@ -56,6 +56,8 @@ provides:
     interface: auth_devices_keys
   probes:
     interface: blackbox_exporter_probes
+    description: |
+      Send over to blackbox exporter the endpoints we want it to probe.
 
 actions:
   get-admin-password:

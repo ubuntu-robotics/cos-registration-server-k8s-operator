@@ -10,18 +10,17 @@ import socket
 import string
 from pathlib import Path
 from typing import Optional
-import socket
-import requests
 
+import requests
 from charms.auth_devices_keys_k8s.v0.auth_devices_keys import AuthDevicesKeysProvider
+from charms.blackbox_exporter_k8s.v0.blackbox_probes import BlackboxProbesProvider
 from charms.catalogue_k8s.v0.catalogue import CatalogueConsumer, CatalogueItem
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.loki_k8s.v1.loki_push_api import LogForwarder
 from charms.tempo_coordinator_k8s.v0.charm_tracing import trace_charm
 from charms.tempo_coordinator_k8s.v0.tracing import TracingEndpointRequirer
 from charms.traefik_route_k8s.v0.traefik_route import TraefikRouteRequirer
-from charms.blackbox_exporter_k8s.v0.blackbox_probes import BlackboxProbesProvider
-from ops.charm import ActionEvent, CharmBase, HookEvent, RelationJoinedEvent, CollectStatusEvent
+from ops.charm import ActionEvent, CharmBase, CollectStatusEvent, HookEvent, RelationJoinedEvent
 from ops.framework import StoredState
 from ops.main import main
 from ops.model import ActiveStatus, MaintenanceStatus, WaitingStatus
@@ -397,16 +396,14 @@ class CosRegistrationServerCharm(CharmBase):
     def self_probe(self):
         """The self-monitoring blackbox probe."""
         probe = {
-            'job_name': 'blackbox_http_2xx',
-            'params': {
-                'module': ['http_2xx']
-            },
-            'static_configs': [
+            "job_name": "blackbox_http_2xx",
+            "params": {"module": ["http_2xx"]},
+            "static_configs": [
                 {
-                    'targets': [self.external_url + "/api/v1/health/"],
-                    'labels': {'name': "cos-registration-server"}
+                    "targets": [self.external_url + "/api/v1/health/"],
+                    "labels": {"name": "cos-registration-server"},
                 }
-            ]
+            ],
         }
         return [probe]
 
@@ -425,24 +422,19 @@ class CosRegistrationServerCharm(CharmBase):
             response.raise_for_status()
             response_json = response.json()
             if response_json:
-                devices_addresses = [item['address'] for item in response_json]
-                devices_uids = [item['uid'] for item in response_json]
+                devices_addresses = [item["address"] for item in response_json]
+                devices_uids = [item["uid"] for item in response_json]
 
             jobs = []
             for address, uid in zip(devices_addresses, devices_uids):
-                jobs.append({
-                    'job_name': f'blackbox_icmp_{uid}',
-                    'metrics_path': '/probe',
-                    'params': {
-                        'module': ['icmp']
-                    },
-                    'static_configs': [
-                        {
-                            'targets': [address],
-                            'labels': {'name': uid}
-                        }
-                    ]
-                })
+                jobs.append(
+                    {
+                        "job_name": f"blackbox_icmp_{uid}",
+                        "metrics_path": "/probe",
+                        "params": {"module": ["icmp"]},
+                        "static_configs": [{"targets": [address], "labels": {"name": uid}}],
+                    }
+                )
             return jobs
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to fetch devices ip from '{database_url}': {e}")
