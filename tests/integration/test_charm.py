@@ -119,6 +119,7 @@ async def test_tracing(ops_test: OpsTest):
 
     assert unit_relation_data
 
+
 async def test_blackbox(ops_test: OpsTest):
     """Test probes are defined in relation data bag."""
     app = ops_test.model.applications[APP_NAME]
