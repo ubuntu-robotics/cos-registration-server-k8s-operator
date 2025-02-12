@@ -74,3 +74,4 @@ To deploy with COS lite bundle follow these instructions:
   ```bash
   http://traefik-virtual-ip/<juju-model-name>-cos-registration-server/
   ```
+add
