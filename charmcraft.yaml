@@ -44,7 +44,7 @@ requires:
     limit: 1
     optional: true
     description: |
-      Integration to send charm traces to a tracing backend.
+      Integration to send charm traces to a tracing backend .
 
 provides:
   grafana-dashboard:
