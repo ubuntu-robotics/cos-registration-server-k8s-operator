@@ -63,10 +63,6 @@ actions:
   get-admin-password:
     description: Get the admin password for the django admin view.
 
-charm-libs: 
-  - lib: blackbox_exporter_k8s.blackbox_probes
-    version: "0"
-
 parts:
   charm:
     build-snaps: [rustup]

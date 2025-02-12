@@ -17,6 +17,7 @@ from charmed_kubeflow_chisme.testing import (
 )
 from charmed_kubeflow_chisme.testing.cos_integration import (
     PROVIDES,
+    REQUIRES,
     _get_unit_relation_data,
 )
 from pytest_operator.plugin import OpsTest
@@ -115,5 +116,13 @@ async def test_tracing(ops_test: OpsTest):
     app = ops_test.model.applications[APP_NAME]
 
     unit_relation_data = await _get_unit_relation_data(app, "tracing", side=PROVIDES)
+
+    assert unit_relation_data
+
+async def test_blackbox(ops_test: OpsTest):
+    """Test probes are defined in relation data bag."""
+    app = ops_test.model.applications[APP_NAME]
+
+    unit_relation_data = await _get_unit_relation_data(app, "probes", side=REQUIRES)
 
     assert unit_relation_data
