@@ -24,7 +24,7 @@ from ops.main import main
 from ops.model import ActiveStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import ChangeError, ExecError, Layer
 
-from src.auth_devices_keys import AuthDevicesKeysProvider
+from auth_devices_keys import AuthDevicesKeysProvider
 
 # Log messages can be retrieved using juju debug-log
 logger = logging.getLogger(__name__)
