@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Optional
 
 import requests
-from charms.auth_devices_keys_k8s.v0.auth_devices_keys import AuthDevicesKeysProvider
 from charms.blackbox_exporter_k8s.v0.blackbox_probes import BlackboxProbesProvider
 from charms.catalogue_k8s.v0.catalogue import CatalogueConsumer, CatalogueItem
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
@@ -25,6 +24,8 @@ from ops.framework import StoredState
 from ops.main import main
 from ops.model import ActiveStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import ChangeError, ExecError, Layer
+
+from auth_devices_keys import AuthDevicesKeysProvider
 
 # Log messages can be retrieved using juju debug-log
 logger = logging.getLogger(__name__)
