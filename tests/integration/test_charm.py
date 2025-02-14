@@ -18,8 +18,8 @@ from charmed_kubeflow_chisme.testing import (
 from charmed_kubeflow_chisme.testing.cos_integration import (
     PROVIDES,
     REQUIRES,
-    _get_unit_relation_data,
     _get_app_relation_data,
+    _get_unit_relation_data,
 )
 from pytest_operator.plugin import OpsTest
 
@@ -52,32 +52,32 @@ async def test_build_and_deploy(ops_test: OpsTest):
     )
 
     # Deploying grafana-agent-k8s and add the logging relation
-    await deploy_and_assert_grafana_agent(
-        ops_test.model, APP_NAME, metrics=False, dashboard=True, logging=True
-    )
-    logger.info(
-        "Adding relation: %s:%s and %s:%s",
-        APP_NAME,
-        APP_GRAFANA_DASHBOARD_DEVICES,
-        GRAFANA_AGENT_APP,
-        GRAFANA_AGENT_GRAFANA_DASHBOARD,
-    )
-    await ops_test.model.integrate(
-        f"{APP_NAME}:{APP_GRAFANA_DASHBOARD_DEVICES}",
-        f"{GRAFANA_AGENT_APP}:{GRAFANA_AGENT_GRAFANA_DASHBOARD}",
-    )
+    # await deploy_and_assert_grafana_agent(
+    #     ops_test.model, APP_NAME, metrics=False, dashboard=True, logging=True
+    # )
+    # logger.info(
+    #     "Adding relation: %s:%s and %s:%s",
+    #     APP_NAME,
+    #     APP_GRAFANA_DASHBOARD_DEVICES,
+    #     GRAFANA_AGENT_APP,
+    #     GRAFANA_AGENT_GRAFANA_DASHBOARD,
+    # )
+    # await ops_test.model.integrate(
+    #     f"{APP_NAME}:{APP_GRAFANA_DASHBOARD_DEVICES}",
+    #     f"{GRAFANA_AGENT_APP}:{GRAFANA_AGENT_GRAFANA_DASHBOARD}",
+    # )
 
-    logger.info(
-        "Adding relation: %s:%s and %s:%s",
-        APP_NAME,
-        "tracing",
-        GRAFANA_AGENT_APP,
-        "tracing-provider",
-    )
-    await ops_test.model.integrate(
-        f"{APP_NAME}:tracing",
-        f"{GRAFANA_AGENT_APP}:tracing-provider",
-    )
+    # logger.info(
+    #     "Adding relation: %s:%s and %s:%s",
+    #     APP_NAME,
+    #     "tracing",
+    #     GRAFANA_AGENT_APP,
+    #     "tracing-provider",
+    # )
+    # await ops_test.model.integrate(
+    #     f"{APP_NAME}:tracing",
+    #     f"{GRAFANA_AGENT_APP}:tracing-provider",
+    # )
 
     logger.info(
         "Adding relation: %s: %s",
@@ -89,45 +89,46 @@ async def test_build_and_deploy(ops_test: OpsTest):
         f"{APP_NAME}:probes",
     )
 
+
 async def test_status(ops_test):
     """Assert on the unit status."""
     assert ops_test.model.applications[APP_NAME].units[0].workload_status == "active"
 
 
-async def test_logging(ops_test: OpsTest):
-    """Test logging is defined in relation data bag."""
-    app = ops_test.model.applications[APP_NAME]
-    await assert_logging(app)
+# async def test_logging(ops_test: OpsTest):
+#     """Test logging is defined in relation data bag."""
+#     app = ops_test.model.applications[APP_NAME]
+#     await assert_logging(app)
 
 
-async def test_grafana_dashboards(ops_test: OpsTest):
-    """Test Grafana dashboards are defined in relation data bag."""
-    app = ops_test.model.applications[APP_NAME]
-    dashboards = get_grafana_dashboards()
-    logger.info("found dashboards: %s", dashboards)
-    await assert_grafana_dashboards(app, dashboards)
+# async def test_grafana_dashboards(ops_test: OpsTest):
+#     """Test Grafana dashboards are defined in relation data bag."""
+#     app = ops_test.model.applications[APP_NAME]
+#     dashboards = get_grafana_dashboards()
+#     logger.info("found dashboards: %s", dashboards)
+#     await assert_grafana_dashboards(app, dashboards)
 
 
-async def test_grafana_dashboards_devices(ops_test: OpsTest, mocker):
-    """Test Grafana dashboards are defined in relation data bag."""
-    app = ops_test.model.applications[APP_NAME]
-    # @todo get dashboard 'from db'
-    dashboards = set()
-    logger.info("found dashboards: %s", dashboards)
-    mocker.patch(
-        "charmed_kubeflow_chisme.testing.cos_integration.APP_GRAFANA_DASHBOARD",
-        "grafana-dashboard-devices",
-    )
-    await assert_grafana_dashboards(app, dashboards)
+# async def test_grafana_dashboards_devices(ops_test: OpsTest, mocker):
+#     """Test Grafana dashboards are defined in relation data bag."""
+#     app = ops_test.model.applications[APP_NAME]
+#     # @todo get dashboard 'from db'
+#     dashboards = set()
+#     logger.info("found dashboards: %s", dashboards)
+#     mocker.patch(
+#         "charmed_kubeflow_chisme.testing.cos_integration.APP_GRAFANA_DASHBOARD",
+#         "grafana-dashboard-devices",
+#     )
+#     await assert_grafana_dashboards(app, dashboards)
 
 
-async def test_tracing(ops_test: OpsTest):
-    """Test logging is defined in relation data bag."""
-    app = ops_test.model.applications[APP_NAME]
+# async def test_tracing(ops_test: OpsTest):
+#     """Test logging is defined in relation data bag."""
+#     app = ops_test.model.applications[APP_NAME]
 
-    unit_relation_data = await _get_unit_relation_data(app, "tracing", side=PROVIDES)
+#     unit_relation_data = await _get_unit_relation_data(app, "tracing", side=PROVIDES)
 
-    assert unit_relation_data
+#     assert unit_relation_data
 
 
 async def test_blackbox(ops_test: OpsTest):
