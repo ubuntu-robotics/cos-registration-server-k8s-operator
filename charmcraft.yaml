@@ -39,9 +39,9 @@ requires:
   logging:
    interface: loki_push_api
    optional: true
-  logging-devices-alerts:
+  logging-alerts-devices:
     interface: loki_push_api
-  send-remote-write-devices-alerts:
+  send-remote-write-alerts-devices:
     interface: prometheus_remote_write
   tracing:
     interface: tracing

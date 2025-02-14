@@ -35,6 +35,6 @@ relations:
   - [ros2bag-fileserver:catalogue, catalogue:catalogue]
   - [cos-registration-server:ingress, traefik:traefik-route]
   - [cos-registration-server:catalogue, catalogue:catalogue]
-  - [cos-registration-server:logging-devices-alerts, loki:logging]
-  - [cos-registration-server:send-remote-write-devices-alerts, prometheus:receive-remote-write]
+  - [cos-registration-server:logging-alerts-devices, loki:logging]
+  - [cos-registration-server:send-remote-write-alerts-devices, prometheus:receive-remote-write]
   - [grafana:grafana-dashboard, cos-registration-server:grafana-dashboard]

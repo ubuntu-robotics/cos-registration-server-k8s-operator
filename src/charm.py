@@ -149,25 +149,25 @@ class CosRegistrationServerCharm(CharmBase):
 
         self.log_forwarder = LogForwarder(self)
 
-        self.loki_device_alert_rules_path = "./loki_alert_rules"
-        self.loki_device_alerts_push_api_consumer = LokiPushApiConsumer(
+        self.loki_alert_rules_path_devices = "src/loki_alert_rules/devices"
+        self.loki_push_api_consumer_devices = LokiPushApiConsumer(
             charm=self,
-            relation_name="logging-devices-alerts",
-            alert_rules_path=self.loki_device_alert_rules_path,
+            relation_name="logging-alerts-devices",
+            alert_rules_path=self.loki_alert_rules_path_devices,
             # The alerts we are sending are not specific to
             # cos-registration-server but to devices outside of juju
             skip_alert_topology_labeling=True,
         )
 
-        self.prometheus_device_alert_rules_path = "./prometheus_alert_rules"
-        self.prometheus_device_alerts_remote_write_consumer = PrometheusRemoteWriteConsumer(
+        self.prometheus_alert_rule_files_path_devices = "src/prometheus_alert_rules/devices"
+        self.prometheus_alerts_remote_write_consumer_devices = PrometheusRemoteWriteConsumer(
             charm=self,
-            relation_name="send-remote-write-devices-alerts",
-            alert_rules_path=self.prometheus_device_alert_rules_path,
+            relation_name="send-remote-write-alerts-devices",
+            alert_rules_path=self.prometheus_alert_rule_files_path_devices,
         )
         # hack because PrometheusRemoteWriteConsumer doesn't
         # have the option to skip topology injection
-        self.prometheus_device_alerts_remote_write_consumer.topology = None
+        self.prometheus_alerts_remote_write_consumer_devices.topology = None
 
         self.tracing_endpoint_requirer = TracingEndpointRequirer(self)
 
@@ -247,8 +247,8 @@ class CosRegistrationServerCharm(CharmBase):
             return
         self._update_grafana_dashboards()
         self._update_auth_devices_keys()
-        self._update_loki_alert_rules()
-        self._update_prometheus_alert_rules()
+        self._update_loki_alert_rule_files_devices()
+        self._update_prometheus_alert_rule_files_devices()
 
     def _get_grafana_dashboards_from_db(self):
         database_url = (
@@ -288,7 +288,7 @@ class CosRegistrationServerCharm(CharmBase):
                     auth_devices_keys
                 )
 
-    def _get_alert_rules_from_db(self, application: str):
+    def _get_alert_rule_files_from_db(self, application: str):
         database_url = (
             self.external_url
             + COS_REGISTRATION_SERVER_API_URL_BASE
@@ -302,36 +302,38 @@ class CosRegistrationServerCharm(CharmBase):
             logger.error(f"Failed to fetch {application} alert rules from '{database_url}': {e}")
             return None
 
-    def _write_alert_rules_to_dir(self, path: str, alert_rules):
+    def _write_alert_rule_files_to_dir(self, path: str, alert_rule_files):
         shutil.rmtree(path, ignore_errors=True)
         mkdir(path)
-        for rules_file in alert_rules:
-            rule_file_name = rules_file["uid"].replace("/", "_")
+        for alert_rule_file in alert_rule_files:
+            rule_file_name = alert_rule_file["uid"].replace("/", "_")
             with open(f"{path}/{rule_file_name}.rule", "w") as f:
-                f.write(rules_file["rules"])
+                f.write(alert_rule_file["rules"])
 
-    def _update_loki_alert_rules(self) -> None:
-        if loki_alert_rules := self._get_alert_rules_from_db(application="loki"):
+    def _update_loki_alert_rule_files_devices(self) -> None:
+        if loki_alert_rules := self._get_alert_rule_files_from_db(application="loki"):
             md5_keys_list_hash = md5_list(loki_alert_rules)
             if md5_keys_list_hash != self._stored.loki_alert_rules_hash:
                 logger.info("Loki alert rules hash has changed, updating them!")
                 self._stored.loki_alert_rules_hash = md5_keys_list_hash
-                self._write_alert_rules_to_dir(
-                    path=self.loki_device_alert_rules_path, alert_rules=loki_alert_rules
+                self._write_alert_rule_files_to_dir(
+                    path=self.loki_alert_rules_path_devices, alert_rule_files=loki_alert_rules
                 )
-                self.loki_device_alerts_push_api_consumer._reinitialize_alert_rules()
+                self.loki_push_api_consumer_devices._reinitialize_alert_rules()
 
-    def _update_prometheus_alert_rules(self) -> None:
-        if prometheus_alert_rules := self._get_alert_rules_from_db(application="prometheus"):
-            md5_keys_list_hash = md5_list(prometheus_alert_rules)
+    def _update_prometheus_alert_rule_files_devices(self) -> None:
+        if prometheus_alert_rule_files := self._get_alert_rule_files_from_db(
+            application="prometheus"
+        ):
+            md5_keys_list_hash = md5_list(prometheus_alert_rule_files)
             if md5_keys_list_hash != self._stored.prometheus_alert_rules_hash:
-                logger.info("Prometheus alert rules hash has changed, updating them!")
+                logger.info("Prometheus alert rule files hash has changed, updating them!")
                 self._stored.prometheus_alert_rules_hash = md5_keys_list_hash
-                self._write_alert_rules_to_dir(
-                    path=self.prometheus_device_alert_rules_path,
-                    alert_rules=prometheus_alert_rules,
+                self._write_alert_rule_files_to_dir(
+                    path=self.prometheus_alert_rule_files_path_devices,
+                    alert_rule_files=prometheus_alert_rule_files,
                 )
-                self.prometheus_device_alerts_remote_write_consumer.reload_alerts()
+                self.prometheus_alerts_remote_write_consumer_devices.reload_alerts()
 
     def _update_layer_and_restart(self, event) -> None:
         """Define and start a workload using the Pebble API."""
