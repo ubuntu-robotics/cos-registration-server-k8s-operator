@@ -19,6 +19,7 @@ from charmed_kubeflow_chisme.testing.cos_integration import (
     PROVIDES,
     REQUIRES,
     _get_unit_relation_data,
+    _get_app_relation_data,
 )
 from pytest_operator.plugin import OpsTest
 
@@ -72,14 +73,21 @@ async def test_build_and_deploy(ops_test: OpsTest):
         "tracing",
         GRAFANA_AGENT_APP,
         "tracing-provider",
-        "probes",
     )
     await ops_test.model.integrate(
         f"{APP_NAME}:tracing",
         f"{GRAFANA_AGENT_APP}:tracing-provider",
-        f"{APP_NAME}:probes",
     )
 
+    logger.info(
+        "Adding relation: %s: %s",
+        APP_NAME,
+        "probes",
+    )
+
+    await ops_test.model.integrate(
+        f"{APP_NAME}:probes",
+    )
 
 async def test_status(ops_test):
     """Assert on the unit status."""
@@ -126,6 +134,6 @@ async def test_blackbox(ops_test: OpsTest):
     """Test probes are defined in relation data bag."""
     app = ops_test.model.applications[APP_NAME]
 
-    unit_relation_data = await _get_unit_relation_data(app, "probes", side=REQUIRES)
+    unit_relation_data = await _get_app_relation_data(app, "probes", side=REQUIRES)
 
     assert unit_relation_data
