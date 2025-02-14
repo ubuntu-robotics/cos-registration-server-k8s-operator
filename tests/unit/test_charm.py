@@ -153,7 +153,9 @@ class TestCharm(unittest.TestCase):
         self.assertEqual(self.harness.charm._update_grafana_dashboards.call_count, 1)
         self.assertEqual(self.harness.charm._update_auth_devices_keys.call_count, 1)
         self.assertEqual(self.harness.charm._update_loki_alert_rule_files_devices.call_count, 1)
-        self.assertEqual(self.harness.charm._update_prometheus_alert_rule_files_devices.call_count, 1)
+        self.assertEqual(
+            self.harness.charm._update_prometheus_alert_rule_files_devices.call_count, 1
+        )
 
     @patch("requests.get")
     def test_get_pub_keys_from_db_success(self, mock_get):
