@@ -22,7 +22,6 @@ from charmed_kubeflow_chisme.testing.cos_integration import (
     _get_app_relation_data,
     _get_unit_relation_data,
 )
-from helpers import get_traefik_proxied_endpoints
 from pytest_operator.plugin import OpsTest
 
 logger = logging.getLogger(__name__)
@@ -33,7 +32,6 @@ RESOURCE_PATH = METADATA["resources"][RESOURCE_NAME]["upstream-source"]
 APP_NAME = METADATA["name"]
 
 APP_GRAFANA_DASHBOARD_DEVICES = "grafana-dashboard-devices"
-
 
 @pytest.mark.abort_on_fail
 async def test_build_and_deploy(ops_test: OpsTest):
@@ -81,24 +79,6 @@ async def test_build_and_deploy(ops_test: OpsTest):
         f"{GRAFANA_AGENT_APP}:tracing-provider",
     )
 
-    logger.info(
-        "Adding relation: %s:%s",
-        APP_NAME,
-        "ingress",
-    )
-
-    await ops_test.model.integrate(
-        f"{APP_NAME}",
-        "ingress",
-    )
-
-    logger.info("Adding relation: %s:%s", APP_NAME, "probes", "")
-
-    await ops_test.model.integrate(
-        f"{APP_NAME}",
-        "probes",
-    )
-
 
 async def test_status(ops_test):
     """Assert on the unit status."""
@@ -140,21 +120,33 @@ async def test_tracing(ops_test: OpsTest):
 
     assert unit_relation_data
 
+async def test_integrate_blackbox(ops_test: OpsTest):
+    await ops_test.model.deploy("blackbox-exporter-k8s", "blackbox", channel="latest/edge", trust=True)
 
-async def test_traefik(ops_test: OpsTest):
-    """Check the ingress integration, by checking if cos-registration-serve is reachable through Traefik."""
-    assert ops_test.model is not None
-    proxied_endpoints = await get_traefik_proxied_endpoints(ops_test)
-    assert APP_NAME in proxied_endpoints
+    logger.info(
+        "Adding relation: %s:%s",
+        APP_NAME,
+        "probes",
+    )
 
-    response = requests.get(f"{proxied_endpoints[APP_NAME]['url']}/api/v1/health/")
-    assert response.status_code == 200
+    await ops_test.model.integrate(
+        f"{APP_NAME}",
+        "blackbox:probes",
+    )
 
+    await ops_test.model.wait_for_idle(
+        apps=[
+            f"{APP_NAME}",
+            "blackbox",
+        ],
+        status="active",
+    )
 
 async def test_blackbox(ops_test: OpsTest):
     """Test probes are defined in relation data bag."""
     app = ops_test.model.applications[APP_NAME]
 
-    unit_relation_data = await _get_app_relation_data(app, "probes", side=REQUIRES)
+    relation_data = await _get_app_relation_data(app, "probes", side=PROVIDES)
 
-    assert unit_relation_data
+    assert relation_data.get("scrape_metadata")
+    assert relation_data.get("scrape_probes")
