@@ -12,4 +12,8 @@ on:
 jobs:
   release:
     uses: canonical/observability/.github/workflows/charm-release.yaml@v0
-    secrets: inherit
+    # See https://github.com/canonical/observability/issues/268
+    # secrets: inherit
+    secrets:
+      CHARMHUB_TOKEN: ${{ secrets.CHARMHUB_TOKEN }}
+      OBSERVABILITY_NOCTUA_TOKEN: "unused"
