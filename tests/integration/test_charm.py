@@ -6,7 +6,6 @@ import logging
 from pathlib import Path
 
 import pytest
-import requests
 import yaml
 from charmed_kubeflow_chisme.testing import (
     GRAFANA_AGENT_APP,
@@ -18,7 +17,6 @@ from charmed_kubeflow_chisme.testing import (
 )
 from charmed_kubeflow_chisme.testing.cos_integration import (
     PROVIDES,
-    REQUIRES,
     _get_app_relation_data,
     _get_unit_relation_data,
 )
@@ -32,6 +30,7 @@ RESOURCE_PATH = METADATA["resources"][RESOURCE_NAME]["upstream-source"]
 APP_NAME = METADATA["name"]
 
 APP_GRAFANA_DASHBOARD_DEVICES = "grafana-dashboard-devices"
+
 
 @pytest.mark.abort_on_fail
 async def test_build_and_deploy(ops_test: OpsTest):
@@ -120,8 +119,11 @@ async def test_tracing(ops_test: OpsTest):
 
     assert unit_relation_data
 
+
 async def test_integrate_blackbox(ops_test: OpsTest):
-    await ops_test.model.deploy("blackbox-exporter-k8s", "blackbox", channel="latest/edge", trust=True)
+    await ops_test.model.deploy(
+        "blackbox-exporter-k8s", "blackbox", channel="latest/edge", trust=True
+    )
 
     logger.info(
         "Adding relation: %s:%s",
@@ -141,6 +143,7 @@ async def test_integrate_blackbox(ops_test: OpsTest):
         ],
         status="active",
     )
+
 
 async def test_blackbox(ops_test: OpsTest):
     """Test probes are defined in relation data bag."""
