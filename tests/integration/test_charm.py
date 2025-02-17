@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 
 import pytest
+import requests
 import yaml
 from charmed_kubeflow_chisme.testing import (
     GRAFANA_AGENT_APP,
@@ -21,6 +22,7 @@ from charmed_kubeflow_chisme.testing.cos_integration import (
     _get_app_relation_data,
     _get_unit_relation_data,
 )
+from helpers import get_traefik_proxied_endpoints
 from pytest_operator.plugin import OpsTest
 
 logger = logging.getLogger(__name__)
@@ -80,13 +82,21 @@ async def test_build_and_deploy(ops_test: OpsTest):
     )
 
     logger.info(
-        "Adding relation: %s: %s",
+        "Adding relation: %s:%s",
         APP_NAME,
-        "probes",
+        "ingress",
     )
 
     await ops_test.model.integrate(
-        f"{APP_NAME}:probes",
+        f"{APP_NAME}",
+        "ingress",
+    )
+
+    logger.info("Adding relation: %s:%s", APP_NAME, "probes", "")
+
+    await ops_test.model.integrate(
+        f"{APP_NAME}",
+        "probes",
     )
 
 
@@ -129,6 +139,16 @@ async def test_tracing(ops_test: OpsTest):
     unit_relation_data = await _get_unit_relation_data(app, "tracing", side=PROVIDES)
 
     assert unit_relation_data
+
+
+async def test_traefik(ops_test: OpsTest):
+    """Check the ingress integration, by checking if cos-registration-serve is reachable through Traefik."""
+    assert ops_test.model is not None
+    proxied_endpoints = await get_traefik_proxied_endpoints(ops_test)
+    assert APP_NAME in proxied_endpoints
+
+    response = requests.get(f"{proxied_endpoints[APP_NAME]['url']}/api/v1/health/")
+    assert response.status_code == 200
 
 
 async def test_blackbox(ops_test: OpsTest):
