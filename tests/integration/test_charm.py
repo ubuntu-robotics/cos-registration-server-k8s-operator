@@ -157,7 +157,7 @@ async def test_grafana_dashboards_devices(ops_test: OpsTest, mocker):
     await assert_grafana_dashboards(app, dashboards)
 
 
-async def test_loki_alert_rules_devices(ops_test: OpsTest, mocker):
+async def test_loki_alert_rules_devices(ops_test: OpsTest):
     """Test Loki alert rules for devices are defined in relation data bag."""
     async with ops_test.fast_forward():
         await ops_test.model.wait_for_idle(apps=[APP_NAME], status="active", timeout=120)
@@ -180,7 +180,7 @@ async def test_loki_alert_rules_devices(ops_test: OpsTest, mocker):
     assert set(relation_alert_rules) == alert_rules
 
 
-async def test_prometheus_alert_rules_devices(ops_test: OpsTest, mocker):
+async def test_prometheus_alert_rules_devices(ops_test: OpsTest):
     """Test Loki alert rules for devices are defined in relation data bag."""
     async with ops_test.fast_forward():
         await ops_test.model.wait_for_idle(apps=[APP_NAME], status="active", timeout=120)
