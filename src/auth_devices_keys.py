@@ -47,11 +47,10 @@ self.device_pub_keys_provider = AuthDevicesKeysProvider(
 
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from ops.charm import (
     CharmBase,
-    HookEvent,
     RelationBrokenEvent,
     RelationChangedEvent,
     RelationCreatedEvent,
@@ -66,7 +65,7 @@ from ops.framework import (
     StoredList,
     StoredState,
 )
-from ops.model import ModelError, Relation
+from ops.model import ModelError, Relation, RelationDataContent
 
 ## TODO: once this library is registered with charmlib the ID will be unique.
 # The unique Charmhub library identifier, never change it
@@ -136,7 +135,7 @@ def _type_convert_stored(obj):
     if isinstance(obj, StoredList):
         return list(map(_type_convert_stored, obj))
     if isinstance(obj, StoredDict):
-        rdict = {}  # type: Dict[Any, Any]
+        rdict = {}  # type: Dict[Any, Any]  # pyright: ignore
         for k in obj.keys():
             rdict[k] = _type_convert_stored(obj[k])
         return rdict
@@ -156,7 +155,7 @@ class AuthDevicesKeysRelationCharmEvents(ObjectEvents):
 class AuthDevicesKeysConsumer(Object):
     """The auth_device_keys consumer."""
 
-    on = AuthDevicesKeysRelationCharmEvents()
+    on = AuthDevicesKeysRelationCharmEvents()  # pyright: ignore
     _stored = StoredState()
 
     def __init__(self, charm, relation_name: str = DEFAULT_RELATION_NAME):
@@ -185,18 +184,21 @@ class AuthDevicesKeysConsumer(Object):
         :class:`DevicesKeysChanged` event, and make the relation data
         available in the app's datastore object.
         """
-        if self._charm.unit.is_leader():
-            try:
-                databag = event.relation.data[event.relation.app].get("auth_devices_keys", "")
-            except ModelError as e:
-                logger.debug(
-                    f"Error {e} attempting to read remote app data; "
-                    f"probably we are in a relation_departed hook"
-                )
-                return
+        ## only handle leader unit for now
+        if not self._charm.unit.is_leader():
+            return
 
-            if not databag:
-                return
+        try:
+            databag = event.relation.data[event.relation.app].get("auth_devices_keys", "")
+        except ModelError as e:
+            logger.debug(
+                f"Error {e} attempting to read remote app data; "
+                f"probably we are in a relation_departed hook"
+            )
+            return
+
+        if not databag:
+            return
 
         coerced_data = (
             _type_convert_stored(self._stored.auth_devices_keys)
@@ -219,7 +221,7 @@ class AuthDevicesKeysConsumer(Object):
         pass
 
     @property
-    def relation_data(self) -> Optional[Dict[str, str]]:
+    def relation_data(self) -> Optional[RelationDataContent]:
         """Retrieve the relation data.
 
         Returns:
@@ -273,11 +275,11 @@ class AuthDevicesKeysProvider(Object):
         if not self._charm.unit.is_leader():
             return
 
-        auth_devices_keys_dict = self._charm._get_auth_devices_keys_from_db()
+        auth_devices_keys_dict = self._charm._get_auth_devices_keys_from_db()  # pyright: ignore
         self.update_all_auth_devices_keys_from_db(auth_devices_keys_dict)
 
     def update_all_auth_devices_keys_from_db(
-        self, auth_devices_keys, _: Optional[HookEvent] = None
+        self, auth_devices_keys, _: Optional[Relation] = None
     ) -> None:
         """Scans the available public keys and updates relations with changes."""
         # Update of storage must be done irrespective of leadership, so
@@ -313,7 +315,9 @@ class AuthDevicesKeysProvider(Object):
         """
         changes = False
         if self._charm.unit.is_leader():
-            auth_devices_keys_dict = self._charm._get_auth_devices_keys_from_db()
+            auth_devices_keys_dict = (
+                self._charm._get_auth_devices_keys_from_db()  # pyright: ignore
+            )
             changes = self.update_all_auth_devices_keys_from_db(
                 auth_devices_keys_dict, event.relation
             )
