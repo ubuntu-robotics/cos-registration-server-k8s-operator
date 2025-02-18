@@ -147,7 +147,7 @@ class CosRegistrationServerCharm(CharmBase):
             charm=self, relation_name="auth-devices-keys"
         )
 
-        self.log_forwarder = LogForwarder(self)
+        self.log_forwarder = LogForwarder(self, recursive=False)
 
         self.loki_alert_rules_path_devices = "src/loki_alert_rules/devices"
         self.loki_push_api_consumer_devices = LokiPushApiConsumer(
