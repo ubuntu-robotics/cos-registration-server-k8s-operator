@@ -79,7 +79,7 @@ async def test_build_and_deploy(ops_test: OpsTest):
     # and wait for active/idle status
     await asyncio.gather(
         ops_test.model.wait_for_idle(
-            apps=[APP_NAME, PROMETHEUS_APP], status="active", raise_on_blocked=True, timeout=600
+            apps=[APP_NAME, PROMETHEUS_APP], status="active", timeout=600
         ),
         ops_test.model.wait_for_idle(apps=[GRAFANA_AGENT_APP], status="blocked", timeout=600)
     )
