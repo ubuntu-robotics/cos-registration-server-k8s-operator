@@ -121,7 +121,9 @@ async def test_tracing(ops_test: OpsTest):
 
 
 async def test_integrate_blackbox(ops_test: OpsTest):
-    await ops_test.model.deploy("blackbox-exporter-k8s", "blackbox", trust=True)
+    await ops_test.model.deploy(
+        "blackbox-exporter-k8s", "blackbox", channel="latest/stable", trust=True
+    )
 
     logger.info(
         "Adding relation: %s:%s",
