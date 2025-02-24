@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Optional
 
 import requests
-from charms.auth_devices_keys_k8s.v0.auth_devices_keys import AuthDevicesKeysProvider
 from charms.catalogue_k8s.v0.catalogue import CatalogueConsumer, CatalogueItem
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.loki_k8s.v1.loki_push_api import LogForwarder, LokiPushApiConsumer
@@ -28,6 +27,8 @@ from ops.charm import ActionEvent, CharmBase, HookEvent, RelationJoinedEvent
 from ops.framework import StoredState
 from ops.model import ActiveStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import ChangeError, ExecError, Layer
+
+from auth_devices_keys import AuthDevicesKeysProvider
 
 # Log messages can be retrieved using juju debug-log
 logger = logging.getLogger(__name__)

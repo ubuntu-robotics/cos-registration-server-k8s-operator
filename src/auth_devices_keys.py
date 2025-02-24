@@ -45,9 +45,17 @@ self.device_pub_keys_provider = AuthDevicesKeysProvider(
 ```
 """
 
+import json
 import logging
-from typing import Dict, Optional
+from typing import Any, Optional
 
+from ops.charm import (
+    CharmBase,
+    RelationBrokenEvent,
+    RelationChangedEvent,
+    RelationCreatedEvent,
+    RelationRole,
+)
 from ops.framework import (
     EventBase,
     EventSource,
@@ -57,19 +65,7 @@ from ops.framework import (
     StoredList,
     StoredState,
 )
-
-from ops.charm import (
-    CharmBase,
-    HookEvent,
-    RelationBrokenEvent,
-    RelationChangedEvent,
-    RelationCreatedEvent,
-    RelationRole,
-)
-
-from ops.model import ModelError, Relation
-from typing import Any, Dict, Optional
-import json
+from ops.model import ModelError, Relation, RelationDataContent
 
 ## TODO: once this library is registered with charmlib the ID will be unique.
 # The unique Charmhub library identifier, never change it
@@ -85,6 +81,7 @@ LIBPATCH = 1
 logger = logging.getLogger(__name__)
 
 DEFAULT_RELATION_NAME = "auth_devices_keys"
+
 
 class RelationNotFoundError(Exception):
     """Raised if there is no relation with the given name."""
@@ -132,12 +129,13 @@ class RelationRoleMismatchError(Exception):
 
         super().__init__(self.message)
 
+
 def _type_convert_stored(obj):
     """Convert Stored* to their appropriate types, recursively."""
     if isinstance(obj, StoredList):
         return list(map(_type_convert_stored, obj))
     if isinstance(obj, StoredDict):
-        rdict = {}  # type: Dict[Any, Any]
+        rdict = {}  # type: Dict[Any, Any]  # pyright: ignore
         for k in obj.keys():
             rdict[k] = _type_convert_stored(obj[k])
         return rdict
@@ -145,22 +143,23 @@ def _type_convert_stored(obj):
 
 
 class AuthDevicesKeysChanged(EventBase):
-    """Event emitted when device keys change """
+    """Event emitted when device keys change."""
 
 
 class AuthDevicesKeysRelationCharmEvents(ObjectEvents):
     """A class to carry custom charm events so requires can react to relation changes."""
+
     auth_devices_keys_changed = EventSource(AuthDevicesKeysChanged)
 
 
 class AuthDevicesKeysConsumer(Object):
+    """The auth_device_keys consumer."""
 
-    on =AuthDevicesKeysRelationCharmEvents()
+    on = AuthDevicesKeysRelationCharmEvents()  # pyright: ignore
     _stored = StoredState()
 
     def __init__(self, charm, relation_name: str = DEFAULT_RELATION_NAME):
         """A class implementing the auth_devices_keys requires relation."""
-
         super().__init__(charm, relation_name)
 
         self._charm = charm
@@ -185,24 +184,30 @@ class AuthDevicesKeysConsumer(Object):
         :class:`DevicesKeysChanged` event, and make the relation data
         available in the app's datastore object.
         """
-        if self._charm.unit.is_leader():
-            try:
-                databag = event.relation.data[event.relation.app].get("auth_devices_keys", "")
-            except ModelError as e:
-                logger.debug(
-                    f"Error {e} attempting to read remote app data; "
-                    f"probably we are in a relation_departed hook"
-                )
-                return False
+        ## only handle leader unit for now
+        if not self._charm.unit.is_leader():
+            return
 
-            if not databag:
-                return False
+        try:
+            databag = event.relation.data[event.relation.app].get("auth_devices_keys", "")
+        except ModelError as e:
+            logger.debug(
+                f"Error {e} attempting to read remote app data; "
+                f"probably we are in a relation_departed hook"
+            )
+            return
 
-        coerced_data = _type_convert_stored(self._stored.auth_devices_keys) if self._stored.auth_devices_keys else []
+        if not databag:
+            return
+
+        coerced_data = (
+            _type_convert_stored(self._stored.auth_devices_keys)
+            if self._stored.auth_devices_keys
+            else []
+        )
         if coerced_data != databag:
             self._stored.auth_devices_keys = databag
             self.on.auth_devices_keys_changed.emit()
-
 
     def _on_relation_broken(self, event: RelationBrokenEvent) -> None:
         """Update job config when providers depart.
@@ -216,7 +221,7 @@ class AuthDevicesKeysConsumer(Object):
         pass
 
     @property
-    def relation_data(self) -> Optional[Dict[str, str]]:
+    def relation_data(self) -> Optional[RelationDataContent]:
         """Retrieve the relation data.
 
         Returns:
@@ -230,16 +235,16 @@ class AuthDevicesKeysConsumer(Object):
 
 
 class AuthDevicesKeysProvider(Object):
+    """The auth_device_keys provider."""
 
     _stored = StoredState()
     on = AuthDevicesKeysRelationCharmEvents()  # pyright: ignore
 
-    def __init__(   
+    def __init__(
         self,
         charm: CharmBase,
         relation_name: str = DEFAULT_RELATION_NAME,
     ) -> None:
-
         """A class implementing the auth_devices_keys provides relation."""
         super().__init__(charm, relation_name)
 
@@ -270,11 +275,11 @@ class AuthDevicesKeysProvider(Object):
         if not self._charm.unit.is_leader():
             return
 
-        auth_devices_keys_dict = self._charm._get_auth_devices_keys_from_db()
+        auth_devices_keys_dict = self._charm._get_auth_devices_keys_from_db()  # pyright: ignore
         self.update_all_auth_devices_keys_from_db(auth_devices_keys_dict)
 
     def update_all_auth_devices_keys_from_db(
-        self, auth_devices_keys, _: Optional[HookEvent] = None
+        self, auth_devices_keys, _: Optional[Relation] = None
     ) -> None:
         """Scans the available public keys and updates relations with changes."""
         # Update of storage must be done irrespective of leadership, so
@@ -293,7 +298,6 @@ class AuthDevicesKeysProvider(Object):
 
     def _update_auth_devices_keys_on_relation(self, relation: Relation) -> None:
         """Update the available devices public keys in the relation data bucket."""
-
         logger.debug(self._stored.auth_devices_keys)
         stored_data = _type_convert_stored(self._stored.auth_devices_keys)
 
@@ -311,8 +315,12 @@ class AuthDevicesKeysProvider(Object):
         """
         changes = False
         if self._charm.unit.is_leader():
-            auth_devices_keys_dict = self._charm._get_auth_devices_keys_from_db()
-            changes = self.update_all_auth_devices_keys_from_db(auth_devices_keys_dict, event.relation)
+            auth_devices_keys_dict = (
+                self._charm._get_auth_devices_keys_from_db()  # pyright: ignore
+            )
+            changes = self.update_all_auth_devices_keys_from_db(
+                auth_devices_keys_dict, event.relation
+            )
 
         if changes:
-            self.on.auth_devices_keys_changed.emit() 
+            self.on.auth_devices_keys_changed.emit()
