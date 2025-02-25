@@ -145,11 +145,17 @@ class TestCharm(unittest.TestCase):
 
         self.harness.charm._update_grafana_dashboards = Mock()
         self.harness.charm._update_auth_devices_keys = Mock()
+        self.harness.charm._update_loki_alert_rule_files_devices = Mock()
+        self.harness.charm._update_prometheus_alert_rule_files_devices = Mock()
 
         self.harness.charm.on.update_status.emit()
 
         self.assertEqual(self.harness.charm._update_grafana_dashboards.call_count, 1)
         self.assertEqual(self.harness.charm._update_auth_devices_keys.call_count, 1)
+        self.assertEqual(self.harness.charm._update_loki_alert_rule_files_devices.call_count, 1)
+        self.assertEqual(
+            self.harness.charm._update_prometheus_alert_rule_files_devices.call_count, 1
+        )
 
     @patch("requests.get")
     def test_get_pub_keys_from_db_success(self, mock_get):
@@ -237,7 +243,7 @@ class TestCharm(unittest.TestCase):
         )
         self.assertNotEqual(self.harness.charm._stored.dashboard_dict_hash, "")
 
-        previous_hash = self.harness.charm._stored.auth_devices_keys_hash
+        previous_hash = self.harness.charm._stored.dashboard_dict_hash
         mock_get.return_value.json.return_value = [
             {"uid": "my_dashboard2", "dashboard": {"annotations": True, "dashboard": True}}
         ]
@@ -264,11 +270,124 @@ class TestCharm(unittest.TestCase):
             {"uid": "my_dashboard", "dashboard": {"annotations": True, "dashboard": True}}
         ]
         self.harness.charm._update_grafana_dashboards()
-        print(self.harness.charm._stored.dashboard_dict_hash)
         mock_get.assert_called_with(
             f"{self.harness.charm.internal_url}/api/v1/applications/grafana/dashboards/"
         )
         self.assertEqual(self.harness.charm._stored.dashboard_dict_hash, previous_hash)
+
+    @patch("requests.get")
+    def test_get_loki_alert_rule_files_from_db_success(self, mock_get):
+        loki_alert = """group:
+          - name: my-group
+            alert: my-alert"""
+
+        mock_get.return_value.json.return_value = [{"uid": "my_alert", "rules": loki_alert}]
+        result = self.harness.charm._get_alert_rule_files_from_db("loki")
+        self.assertEqual(
+            result,
+            [{"uid": "my_alert", "rules": loki_alert}],
+        )
+        mock_get.assert_called_once_with(
+            f"{self.harness.charm.internal_url}/api/v1/applications/loki/alert_rules/"
+        )
+
+    @patch("requests.get")
+    def test_update_loki_alert_rule_files_changed(self, mock_get):
+        loki_alert = """group:
+          - name: my-group
+            alert: my-alert"""
+        mock_get.return_value.json.return_value = [{"uid": "my_alert", "rules": loki_alert}]
+        self.harness.charm._stored.loki_alert_rules_hash = ""
+        self.harness.charm._update_loki_alert_rule_files_devices()
+        mock_get.assert_called_with(
+            f"{self.harness.charm.internal_url}/api/v1/applications/loki/alert_rules/"
+        )
+        self.assertNotEqual(self.harness.charm._stored.loki_alert_rules_hash, "")
+
+        previous_hash = self.harness.charm._stored.loki_alert_rules_hash
+        mock_get.return_value.json.return_value = [{"uid": "my_rule2", "rules": loki_alert}]
+        self.harness.charm._update_loki_alert_rule_files_devices()
+        mock_get.assert_called_with(
+            f"{self.harness.charm.internal_url}/api/v1/applications/loki/alert_rules/"
+        )
+        self.assertNotEqual(self.harness.charm._stored.loki_alert_rules_hash, previous_hash)
+
+    @patch("requests.get")
+    def test_update_loki_alert_rules_files_not_changed(self, mock_get):
+        loki_alert = """group:
+          - name: my-group
+            alert: my-alert"""
+        mock_get.return_value.json.return_value = [{"uid": "my_rule", "rules": loki_alert}]
+        self.harness.charm._stored.loki_alert_rules_hash = ""
+        self.harness.charm._update_loki_alert_rule_files_devices()
+        mock_get.assert_called_with(
+            f"{self.harness.charm.internal_url}/api/v1/applications/loki/alert_rules/"
+        )
+        self.assertNotEqual(self.harness.charm._stored.loki_alert_rules_hash, "")
+        previous_hash = self.harness.charm._stored.loki_alert_rules_hash
+        self.harness.charm._update_loki_alert_rule_files_devices()
+        print(self.harness.charm._stored.loki_alert_rules_hash)
+        mock_get.assert_called_with(
+            f"{self.harness.charm.internal_url}/api/v1/applications/loki/alert_rules/"
+        )
+        self.assertEqual(self.harness.charm._stored.loki_alert_rules_hash, previous_hash)
+
+    @patch("requests.get")
+    def test_get_prometheus_alert_rule_files_from_db_success(self, mock_get):
+        prometheus_alert = """group:
+          - name: my-group
+            alert: my-alert"""
+
+        mock_get.return_value.json.return_value = [{"uid": "my_alert", "rules": prometheus_alert}]
+        result = self.harness.charm._get_alert_rule_files_from_db("prometheus")
+        self.assertEqual(
+            result,
+            [{"uid": "my_alert", "rules": prometheus_alert}],
+        )
+        mock_get.assert_called_once_with(
+            f"{self.harness.charm.internal_url}/api/v1/applications/prometheus/alert_rules/"
+        )
+
+    @patch("requests.get")
+    def test_update_prometheus_alert_rule_files_changed(self, mock_get):
+        prometheus_alert = """group:
+          - name: my-group
+            alert: my-alert"""
+        mock_get.return_value.json.return_value = [{"uid": "my_alert", "rules": prometheus_alert}]
+        self.harness.charm._stored.prometheus_alert_rules_hash = ""
+        self.harness.charm._update_prometheus_alert_rule_files_devices()
+        mock_get.assert_called_with(
+            f"{self.harness.charm.internal_url}/api/v1/applications/prometheus/alert_rules/"
+        )
+        self.assertNotEqual(self.harness.charm._stored.prometheus_alert_rules_hash, "")
+
+        previous_hash = self.harness.charm._stored.prometheus_alert_rules_hash
+        mock_get.return_value.json.return_value = [{"uid": "my_rule2", "rules": prometheus_alert}]
+        self.harness.charm._update_prometheus_alert_rule_files_devices()
+        mock_get.assert_called_with(
+            f"{self.harness.charm.internal_url}/api/v1/applications/prometheus/alert_rules/"
+        )
+        self.assertNotEqual(self.harness.charm._stored.prometheus_alert_rules_hash, previous_hash)
+
+    @patch("requests.get")
+    def test_update_prometheus_alert_rule_files_not_changed(self, mock_get):
+        prometheus_alert = """group:
+          - name: my-group
+            alert: my-alert"""
+        mock_get.return_value.json.return_value = [{"uid": "my_rule", "rules": prometheus_alert}]
+        self.harness.charm._stored.prometheus_alert_rules_hash = ""
+        self.harness.charm._update_prometheus_alert_rule_files_devices()
+        mock_get.assert_called_with(
+            f"{self.harness.charm.internal_url}/api/v1/applications/prometheus/alert_rules/"
+        )
+        self.assertNotEqual(self.harness.charm._stored.prometheus_alert_rules_hash, "")
+        previous_hash = self.harness.charm._stored.prometheus_alert_rules_hash
+        self.harness.charm._update_prometheus_alert_rule_files_devices()
+        print(self.harness.charm._stored.prometheus_alert_rules_hash)
+        mock_get.assert_called_with(
+            f"{self.harness.charm.internal_url}/api/v1/applications/prometheus/alert_rules/"
+        )
+        self.assertEqual(self.harness.charm._stored.prometheus_alert_rules_hash, previous_hash)
 
 
 class TestMD5(unittest.TestCase):

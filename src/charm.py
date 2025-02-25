@@ -6,21 +6,26 @@ import hashlib
 import json
 import logging
 import secrets
+import shutil
 import socket
 import string
+from os import mkdir
 from pathlib import Path
 from typing import Optional
 
 import requests
 from charms.catalogue_k8s.v0.catalogue import CatalogueConsumer, CatalogueItem
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
-from charms.loki_k8s.v1.loki_push_api import LogForwarder
+from charms.loki_k8s.v1.loki_push_api import LogForwarder, LokiPushApiConsumer
+from charms.prometheus_k8s.v1.prometheus_remote_write import (
+    PrometheusRemoteWriteConsumer,
+)
 from charms.tempo_coordinator_k8s.v0.charm_tracing import trace_charm
 from charms.tempo_coordinator_k8s.v0.tracing import TracingEndpointRequirer
 from charms.traefik_route_k8s.v0.traefik_route import TraefikRouteRequirer
+from ops import main
 from ops.charm import ActionEvent, CharmBase, HookEvent, RelationJoinedEvent
 from ops.framework import StoredState
-from ops.main import main
 from ops.model import ActiveStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import ChangeError, ExecError, Layer
 
@@ -95,7 +100,11 @@ class CosRegistrationServerCharm(CharmBase):
 
         self.container = self.unit.get_container(self.name)
         self._stored.set_default(
-            admin_password="", dashboard_dict_hash="", auth_devices_keys_hash=""
+            admin_password="",
+            dashboard_dict_hash="",
+            auth_devices_keys_hash="",
+            loki_alert_rules_hash="",
+            prometheus_alert_rules_hash="",
         )
         self.ingress = TraefikRouteRequirer(self, self.model.get_relation("ingress"), "ingress")  # type: ignore
         self.framework.observe(self.on["ingress"].relation_joined, self._configure_ingress)
@@ -141,6 +150,26 @@ class CosRegistrationServerCharm(CharmBase):
         )
 
         self.log_forwarder = LogForwarder(self)
+
+        self.loki_alert_rules_path_devices = "src/loki_alert_rules/devices"
+        self.loki_push_api_consumer_devices = LokiPushApiConsumer(
+            charm=self,
+            relation_name="logging-alerts-devices",
+            alert_rules_path=self.loki_alert_rules_path_devices,
+            # The alerts we are sending are not specific to
+            # cos-registration-server but to devices outside of juju
+            skip_alert_topology_labeling=True,
+        )
+
+        self.prometheus_alert_rule_files_path_devices = "src/prometheus_alert_rules/devices"
+        self.prometheus_alerts_remote_write_consumer_devices = PrometheusRemoteWriteConsumer(
+            charm=self,
+            relation_name="send-remote-write-alerts-devices",
+            alert_rules_path=self.prometheus_alert_rule_files_path_devices,
+        )
+        # hack because PrometheusRemoteWriteConsumer doesn't
+        # have the option to skip topology injection
+        self.prometheus_alerts_remote_write_consumer_devices.topology = None
 
         self.tracing_endpoint_requirer = TracingEndpointRequirer(self)
 
@@ -220,6 +249,8 @@ class CosRegistrationServerCharm(CharmBase):
             return
         self._update_grafana_dashboards()
         self._update_auth_devices_keys()
+        self._update_loki_alert_rule_files_devices()
+        self._update_prometheus_alert_rule_files_devices()
 
     def _get_grafana_dashboards_from_db(self):
         database_url = (
@@ -258,6 +289,54 @@ class CosRegistrationServerCharm(CharmBase):
                 self.auth_devices_keys_provider.update_all_auth_devices_keys_from_db(
                     auth_devices_keys
                 )
+
+    def _get_alert_rule_files_from_db(self, application: str):
+        database_url = (
+            self.external_url
+            + COS_REGISTRATION_SERVER_API_URL_BASE
+            + f"applications/{application}/alert_rules/"
+        )
+        try:
+            response = requests.get(database_url)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to fetch {application} alert rules from '{database_url}': {e}")
+            return None
+        else:
+            return response.json()
+
+    def _write_alert_rule_files_to_dir(self, path: str, alert_rule_files):
+        shutil.rmtree(path, ignore_errors=True)
+        mkdir(path)
+        for alert_rule_file in alert_rule_files:
+            rule_file_name = alert_rule_file["uid"].replace("/", "_")
+            with open(f"{path}/{rule_file_name}.rule", "w") as f:
+                f.write(alert_rule_file["rules"])
+
+    def _update_loki_alert_rule_files_devices(self) -> None:
+        if loki_alert_rules := self._get_alert_rule_files_from_db(application="loki"):
+            md5_keys_list_hash = md5_list(loki_alert_rules)
+            if md5_keys_list_hash != self._stored.loki_alert_rules_hash:
+                logger.info("Loki alert rules hash has changed, updating them!")
+                self._stored.loki_alert_rules_hash = md5_keys_list_hash
+                self._write_alert_rule_files_to_dir(
+                    path=self.loki_alert_rules_path_devices, alert_rule_files=loki_alert_rules
+                )
+                self.loki_push_api_consumer_devices._reinitialize_alert_rules()
+
+    def _update_prometheus_alert_rule_files_devices(self) -> None:
+        if prometheus_alert_rule_files := self._get_alert_rule_files_from_db(
+            application="prometheus"
+        ):
+            md5_keys_list_hash = md5_list(prometheus_alert_rule_files)
+            if md5_keys_list_hash != self._stored.prometheus_alert_rules_hash:
+                logger.info("Prometheus alert rule files hash has changed, updating them!")
+                self._stored.prometheus_alert_rules_hash = md5_keys_list_hash
+                self._write_alert_rule_files_to_dir(
+                    path=self.prometheus_alert_rule_files_path_devices,
+                    alert_rule_files=prometheus_alert_rule_files,
+                )
+                self.prometheus_alerts_remote_write_consumer_devices.reload_alerts()
 
     def _update_layer_and_restart(self, event) -> None:
         """Define and start a workload using the Pebble API."""
