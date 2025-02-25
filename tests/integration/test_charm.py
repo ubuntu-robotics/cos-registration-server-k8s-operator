@@ -2,31 +2,30 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
+import asyncio
 import logging
 from pathlib import Path
 
 import pytest
 import yaml
 from charmed_kubeflow_chisme.testing import (
+    APP_GRAFANA_DASHBOARD,
+    APP_LOGGING,
     GRAFANA_AGENT_APP,
     GRAFANA_AGENT_GRAFANA_DASHBOARD,
     GRAFANA_AGENT_LOGGING_PROVIDER,
     assert_grafana_dashboards,
     assert_logging,
-    deploy_and_assert_grafana_agent,
-    get_grafana_dashboards,
 )
-from charmed_kubeflow_chisme.testing import (
-    get_alert_rules as get_alert_rule_from_files,
-)
-from charmed_kubeflow_chisme.testing.cos_integration import (
-    PROVIDES,
-    REQUIRES,
-    _get_app_relation_data,
-    _get_unit_relation_data,
-)
+from charmed_kubeflow_chisme.testing import get_alert_rules as get_alert_rule_from_files
+from charmed_kubeflow_chisme.testing import get_grafana_dashboards
+from charmed_kubeflow_chisme.testing.cos_integration import PROVIDES, REQUIRES
 from charmed_kubeflow_chisme.testing.cos_integration import (
     _get_alert_rules as get_alert_rules_from_str,
+)
+from charmed_kubeflow_chisme.testing.cos_integration import (
+    _get_app_relation_data,
+    _get_unit_relation_data,
 )
 from pytest_operator.plugin import OpsTest
 
@@ -37,9 +36,13 @@ RESOURCE_NAME = "cos-registration-server-image"
 RESOURCE_PATH = METADATA["resources"][RESOURCE_NAME]["upstream-source"]
 APP_NAME = METADATA["name"]
 
+APP_TRACING = "tracing"
+
 APP_GRAFANA_DASHBOARD_DEVICES = "grafana-dashboard-devices"
 
 GRAFANA_AGENT_LOGGING_CONSUMER = "logging"
+GRAFANA_AGENT_TRACING_PROVIDER = "tracing-provider"
+
 APP_LOKI_ALERT_RULE_FILES_DEVICES = "logging-alerts-devices"
 APP_PROMETHEUS_ALERT_RULE_FILES_DEVICES = "send-remote-write-alerts-devices"
 
@@ -61,67 +64,66 @@ async def test_build_and_deploy(ops_test: OpsTest):
     charm = await ops_test.build_charm(".")
     resources = {RESOURCE_NAME: RESOURCE_PATH}
 
-    # Deploy the charm
-    await ops_test.model.deploy(charm, resources=resources, application_name=APP_NAME)
-    # Deploy prometheus-k8s
-    # We must deploy prometheus since grafana-agent-k8s doesn't receive remote-write
-    await ops_test.model.deploy(PROMETHEUS_APP, channel="latest/stable", trust=True)
+    await asyncio.gather(
+        # Deploy the charm
+        ops_test.model.deploy(charm, resources=resources, application_name=APP_NAME),
+
+        # Deploy prometheus-k8s
+        # We must deploy prometheus since grafana-agent-k8s doesn't receive remote-write
+        ops_test.model.deploy(PROMETHEUS_APP, channel="latest/stable", trust=True),
+
+        # Deploy grafana-agent
+        ops_test.model.deploy(GRAFANA_AGENT_APP, channel="latest/stable")
+    )
 
     # and wait for active/idle status
-    await ops_test.model.wait_for_idle(
-        apps=[APP_NAME, PROMETHEUS_APP], status="active", raise_on_blocked=True, timeout=1000
+    await asyncio.gather(
+        ops_test.model.wait_for_idle(
+            apps=[APP_NAME, PROMETHEUS_APP], status="active", timeout=600
+        ),
+        ops_test.model.wait_for_idle(apps=[GRAFANA_AGENT_APP], status="blocked", timeout=600)
     )
 
-    # Deploying grafana-agent-k8s and add the logging relation
-    await deploy_and_assert_grafana_agent(
-        ops_test.model, APP_NAME, metrics=False, dashboard=True, logging=True
-    )
-    logger.info(
-        "Adding relation: %s:%s and %s:%s",
-        APP_NAME,
-        APP_GRAFANA_DASHBOARD_DEVICES,
-        GRAFANA_AGENT_APP,
-        GRAFANA_AGENT_GRAFANA_DASHBOARD,
-    )
-    await ops_test.model.integrate(
-        f"{APP_NAME}:{APP_GRAFANA_DASHBOARD_DEVICES}",
-        f"{GRAFANA_AGENT_APP}:{GRAFANA_AGENT_GRAFANA_DASHBOARD}",
+
+@pytest.mark.abort_on_fail
+async def test_integrate(ops_test: OpsTest):
+    await asyncio.gather(
+        ops_test.model.integrate(
+            f"{APP_NAME}:{APP_GRAFANA_DASHBOARD}",
+            f"{GRAFANA_AGENT_APP}:{GRAFANA_AGENT_GRAFANA_DASHBOARD}",
+        ),
+
+        ops_test.model.integrate(
+            f"{APP_NAME}:{APP_LOGGING}",
+            f"{GRAFANA_AGENT_APP}:{GRAFANA_AGENT_LOGGING_PROVIDER}",
+        ),
+
+        ops_test.model.integrate(
+            f"{APP_NAME}:{APP_GRAFANA_DASHBOARD_DEVICES}",
+            f"{GRAFANA_AGENT_APP}:{GRAFANA_AGENT_GRAFANA_DASHBOARD}",
+        ),
+
+        ops_test.model.integrate(
+            f"{APP_NAME}:{APP_LOKI_ALERT_RULE_FILES_DEVICES}",
+            f"{GRAFANA_AGENT_APP}:{GRAFANA_AGENT_LOGGING_PROVIDER}",
+        ),
+
+        ops_test.model.integrate(
+            f"{APP_NAME}:{APP_PROMETHEUS_ALERT_RULE_FILES_DEVICES}",
+            f"{PROMETHEUS_APP}:{PROMETHEUS_RECEIVE_REMOTE_WRITE}",
+        ),
+
+        ops_test.model.integrate(
+            f"{APP_NAME}:{APP_TRACING}",
+            f"{GRAFANA_AGENT_APP}:{GRAFANA_AGENT_TRACING_PROVIDER}",
+        )
     )
 
-    logger.info(
-        "Adding relation: %s:%s and %s:%s",
-        APP_NAME,
-        APP_LOKI_ALERT_RULE_FILES_DEVICES,
-        GRAFANA_AGENT_APP,
-        GRAFANA_AGENT_LOGGING_PROVIDER,
-    )
-    await ops_test.model.integrate(
-        f"{APP_NAME}:{APP_LOKI_ALERT_RULE_FILES_DEVICES}",
-        f"{GRAFANA_AGENT_APP}:{GRAFANA_AGENT_LOGGING_PROVIDER}",
-    )
-
-    logger.info(
-        "Adding relation: %s:%s and %s:%s",
-        APP_NAME,
-        APP_PROMETHEUS_ALERT_RULE_FILES_DEVICES,
-        PROMETHEUS_APP,
-        PROMETHEUS_RECEIVE_REMOTE_WRITE,
-    )
-    await ops_test.model.integrate(
-        f"{APP_NAME}:{APP_PROMETHEUS_ALERT_RULE_FILES_DEVICES}",
-        f"{PROMETHEUS_APP}:{PROMETHEUS_RECEIVE_REMOTE_WRITE}",
-    )
-
-    logger.info(
-        "Adding relation: %s:%s and %s:%s",
-        APP_NAME,
-        "tracing",
-        GRAFANA_AGENT_APP,
-        "tracing-provider",
-    )
-    await ops_test.model.integrate(
-        f"{APP_NAME}:tracing",
-        f"{GRAFANA_AGENT_APP}:tracing-provider",
+    await asyncio.gather(
+        ops_test.model.wait_for_idle(
+            apps=[APP_NAME, PROMETHEUS_APP], status="active", raise_on_blocked=True, timeout=180
+        ),
+        ops_test.model.wait_for_idle(apps=[GRAFANA_AGENT_APP], status="blocked", timeout=180)
     )
 
 
