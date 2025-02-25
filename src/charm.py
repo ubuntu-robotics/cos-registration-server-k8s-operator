@@ -296,13 +296,14 @@ class CosRegistrationServerCharm(CharmBase):
             + COS_REGISTRATION_SERVER_API_URL_BASE
             + f"applications/{application}/alert_rules/"
         )
+        response = None
         try:
             response = requests.get(database_url)
             response.raise_for_status()
-            return response.json()
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to fetch {application} alert rules from '{database_url}': {e}")
-            return None
+        finally:
+            return response
 
     def _write_alert_rule_files_to_dir(self, path: str, alert_rule_files):
         shutil.rmtree(path, ignore_errors=True)
